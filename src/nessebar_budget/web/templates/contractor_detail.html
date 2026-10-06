@@ -1,43 +1,47 @@
 {% extends "base.html" %}
+{% import "_macros.html" as m %}
 {% block title %}{{ co.name }} — Бюджетен монитор Несебър{% endblock %}
 {% block content %}
-<p class="breadcrumbs"><a href="{{ root }}contractors/index.html">← Всички изпълнители</a></p>
-<h1>{{ co.name }}</h1>
-<p class="lede">ЕИК {{ co.eik_display }}</p>
+<div class="container">
+  {% call m.page_head("", co.name, root ~ "contractors/index.html", "Всички изпълнители") %}
+  ЕИК {{ co.eik_display }}
+  {% endcall %}
 
-<div class="stat-grid">
-  <div class="stat-tile">
-    <span class="stat-tile__label">Брой договори с Община Несебър</span>
-    <span class="stat-tile__value">{{ co.contract_count }}</span>
+  <div class="stats stats--3" role="list">
+    <div class="stat" role="listitem">
+      <span class="stat__label">Договори с общината</span>
+      <span class="stat__value"><span class="figure">{{ co.contract_count | num }}</span></span>
+      <span class="stat__note">подписани договора в ЦАИС ЕОП</span>
+    </div>
+    <div class="stat" role="listitem">
+      <span class="stat__label">Обща стойност</span>
+      <span class="stat__value">{{ m.figure(co.total_value_eur) }}</span>
+      <span class="stat__note">{{ co.share_of_total | pct }} от всички подписани договори</span>
+    </div>
+    <div class="stat" role="listitem">
+      <span class="stat__label">Един участник</span>
+      <span class="stat__value">{% if co.single_bidder_share is not none %}<span class="figure">{{ co.single_bidder_share | pct }}</span>{% else %}<span class="figure figure--muted">—</span>{% endif %}</span>
+      <span class="stat__note">{% if co.single_bidder_known %}от {{ co.single_bidder_known | num }} договора с известен брой оферти{% else %}няма данни от СИГМА{% endif %}</span>
+    </div>
   </div>
-  <div class="stat-tile">
-    <span class="stat-tile__label">Обща стойност</span>
-    <span class="stat-tile__value">{{ co.total_value_eur | eur }}</span>
-    <span class="stat-tile__note">{{ co.share_of_total | pct }} от общата стойност на всички подписани договори</span>
-  </div>
-  <div class="stat-tile">
-    <span class="stat-tile__label">Дял от едноличен участник</span>
-    <span class="stat-tile__value">{{ co.single_bidder_share | pct if co.single_bidder_share is not none else "—" }}</span>
-    <span class="stat-tile__note">
-    {% if co.single_bidder_known %}от {{ co.single_bidder_known }} договора с известен брой оферти (СИГМА){% else %}няма данни от СИГМА{% endif %}
-    </span>
-  </div>
-</div>
 
-<h2>Договори</h2>
-<div class="table-wrap">
-<table>
-  <thead><tr><th>Дата</th><th>Предмет</th><th class="num">Стойност (EUR)</th><th class="num">Оферти</th></tr></thead>
-  <tbody>
-  {% for c in co.contracts %}
-  <tr>
-    <td>{{ c.contract_date | bgdate }}</td>
-    <td><a href="{{ root }}contracts/{{ c.source_id }}.html">{{ c.title or '(без заглавие)' }}</a></td>
-    <td class="num">{{ c.contract_value_eur | eur }}</td>
-    <td class="num">{{ c.bids_received if c.bids_received is not none else '—' }}</td>
-  </tr>
-  {% endfor %}
-  </tbody>
-</table>
+  <section class="block">
+    <h2 class="block__title">Договори</h2>
+    <div class="table-wrap">
+    <table class="table">
+      <thead><tr><th class="col-date">Дата</th><th>Предмет</th><th class="num">Стойност</th><th class="num col-bids">Оферти</th></tr></thead>
+      <tbody>
+      {% for c in co.contracts %}
+      <tr>
+        <td class="nowrap muted">{{ c.contract_date | bgdate }}</td>
+        <td><a class="row-link clamp-2" href="{{ root }}contracts/{{ c.source_id }}.html">{{ c.title or '(без заглавие)' }}</a></td>
+        <td class="num">{{ c.contract_value_eur | eur }}</td>
+        <td class="num">{% if c.bids_received is not none %}{{ c.bids_received | num }}{% else %}<span class="muted">—</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </section>
 </div>
 {% endblock %}

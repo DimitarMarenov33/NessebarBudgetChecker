@@ -1,0 +1,122 @@
+{# Shared body of budget/index.html and budget/<period>.html.
+   Expects: data (one period's dict), period, periods, changes, root, m. #}
+{% import "_macros.html" as m %}
+{% set year = period[:4] %}
+<nav class="segmented" aria-label="Избор на месец">
+  {% for p in periods %}
+  <a href="{{ root }}budget/{{ p }}.html"{% if p == period %} aria-current="page"{% endif %}>{{ p | period }}</a>
+  {% endfor %}
+</nav>
+
+<div class="stats stats--3" role="list">
+  <div class="stat" role="listitem">
+    <span class="stat__label">План за {{ year }}</span>
+    <span class="stat__value">{{ m.figure(data.grand_total.plan_current) }}</span>
+    <span class="stat__note">Последен приет план към {{ period | period }}</span>
+  </div>
+  <div class="stat" role="listitem">
+    <span class="stat__label">Изразходвано</span>
+    <span class="stat__value">{{ m.figure(data.grand_total.spent_period) }}</span>
+    {{ m.meter(data.grand_total.pct_executed, label=(data.grand_total.pct_executed | pct) ~ " изпълнение") }}
+    <span class="stat__note"><strong>{{ data.grand_total.pct_executed | pct }}</strong> от годишния план</span>
+  </div>
+  <div class="stat" role="listitem">
+    <span class="stat__label">Стойност на всички обекти</span>
+    <span class="stat__value">{{ m.figure(data.grand_total.estimated_total) }}</span>
+    <span class="stat__note">{{ data.grand_total.spent_prior | eur }} похарчени преди {{ year }}</span>
+  </div>
+</div>
+
+<section class="block">
+  <div class="block__head">
+    <h2 class="block__title">По функции</h2>
+    <p class="block__sub">Похарчено спрямо плана за {{ year }} по функционална класификация.</p>
+  </div>
+  <div class="table-wrap">
+  <table class="table table--functions">
+    <thead><tr><th>Функция</th><th class="col-meter">Изпълнение</th><th class="num">Похарчено</th><th class="num">План</th></tr></thead>
+    <tbody>
+    {% for f in data.function_totals %}
+    <tr>
+      <td>{{ f.name }}</td>
+      <td class="col-meter">
+        <span class="share">{{ m.meter(f.pct_executed, "warning" if (f.pct_executed or 0) > 1 else "accent") }}<span class="tnum">{{ f.pct_executed | pct if f.pct_executed is not none else "—" }}</span></span>
+      </td>
+      <td class="num">{{ f.spent_period | eur }}</td>
+      <td class="num">{{ f.plan_current | eur }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+
+{% if changes.previous %}
+<section class="block">
+  <div class="block__head">
+    <h2 class="block__title">Промени спрямо {{ changes.previous | period }}</h2>
+    <p class="block__sub">Обекти, добавени в програмата или с увеличен план за годината.</p>
+  </div>
+  <div class="changes">
+    <div class="changes__col">
+      <h3 class="changes__title">Нови обекти <span class="muted tnum">{{ changes.added | length | num }}</span></h3>
+      {% if changes.added %}
+      <ul class="rows">
+        {% for o in changes.added %}
+        <li><span class="rows__main"><span class="clamp-2">{{ o.object_name }}</span><span class="sub">{{ o.function_name }}</span></span><span class="rows__num">{{ o.plan_current | eur }}</span></li>
+        {% endfor %}
+      </ul>
+      {% else %}<p class="empty">Няма нови обекти.</p>{% endif %}
+    </div>
+    <div class="changes__col">
+      <h3 class="changes__title">Увеличен план <span class="muted tnum">{{ changes.increased | length | num }}</span></h3>
+      {% if changes.increased %}
+      <ul class="rows">
+        {% for o in changes.increased %}
+        <li><span class="rows__main"><span class="clamp-2">{{ o.object_name }}</span><span class="sub">{{ o.previous_plan | eur }} → {{ o.plan_current | eur }}</span></span><span class="rows__num">+{{ o.delta | eur }}</span></li>
+        {% endfor %}
+      </ul>
+      {% else %}<p class="empty">Няма обекти с увеличен план.</p>{% endif %}
+    </div>
+  </div>
+</section>
+{% endif %}
+
+<section class="block" data-table-container>
+  <div class="block__head">
+    <h2 class="block__title">Всички обекти</h2>
+    <p class="block__sub">{{ data.object_count | num }} капиталови обекта към {{ period | period }}.</p>
+  </div>
+  <div class="toolbar">
+    {{ m.search("Търси обект или функция…") }}
+    {{ m.count(data.object_count) }}
+  </div>
+  <div class="table-wrap">
+  <table class="table" data-sortable data-filterable>
+    <thead>
+      <tr>
+        <th data-sort="none" class="col-func">Функция</th>
+        <th data-sort="none">Обект</th>
+        <th data-sort="none" class="num">Обща стойност</th>
+        <th data-sort="none" class="num">План {{ year }}</th>
+        <th data-sort="none" class="num">Похарчено</th>
+        <th data-sort="none" class="num">Изпълнение</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for o in data.objects %}
+    <tr>
+      <td class="muted-strong"><span class="clamp-2">{{ o.function_name }}</span></td>
+      <td><span class="clamp-2">{{ o.object_name }}</span></td>
+      <td class="num" data-sort-value="{{ o.estimated_total or 0 }}">{{ o.estimated_total | eur }}</td>
+      <td class="num" data-sort-value="{{ o.plan_current or 0 }}">{{ o.plan_current | eur }}</td>
+      <td class="num" data-sort-value="{{ o.spent_period or 0 }}">{{ o.spent_period | eur }}</td>
+      <td class="num{% if (o.pct_executed or 0) > 1 %} is-over{% endif %}" data-sort-value="{{ o.pct_executed or 0 }}">{{ o.pct_executed | pct if o.pct_executed is not none else "—" }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <p class="footnote">„Изпълнение" = похарчено през {{ year }} / план за {{ year }} за съответния обект. Над 100% означава
+  разход над последния приет план.</p>
+</section>

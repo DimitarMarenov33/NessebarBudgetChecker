@@ -2,65 +2,69 @@
 {% import "_macros.html" as m %}
 {% block title %}Поръчки и договори — Бюджетен монитор Несебър{% endblock %}
 {% block content %}
-<h1>Обществени поръчки и договори</h1>
-<p class="lede">Всички {{ contracts | length | num }} записа на Община Несебър в ЦАИС ЕОП (app.eop.bg):
-подписани договори и текущи процедури. Броят подадени оферти (когато е известен) идва от СИГМА —
-виж <a href="{{ root }}methodology.html#dedupe">как се съпоставят двата източника</a>.
-Всеки ред води към оригиналния запис в ЦАИС ЕОП и към страница с повече подробности тук.</p>
+{% set signed_total = contracts | selectattr("is_signed") | list | length %}
+<div class="container">
+  {% call m.page_head("Поръчки", "Обществени поръчки и договори") %}
+  Всички {{ contracts | length | num }} записа на Община Несебър в ЦАИС ЕОП — подписани договори и текущи
+  процедури, с броя подадени оферти от СИГМА, когато е известен.
+  {% endcall %}
 
-{% if year_chart_items %}
-<div class="chart-section">
-<h2>По години (стойност на подписаните договори)</h2>
-{{ m.vbar_chart(year_chart_items, fmt_eur) }}
-</div>
-{% endif %}
+  {% if year_chart_items %}
+  <section class="block">
+    <div class="card">
+      <div class="card__head">
+        <h2 class="card__title">Стойност на подписаните договори по години</h2>
+        <p class="card__meta">{{ signed_total | num }} договора</p>
+      </div>
+      {{ m.vbar_chart(year_chart_items, fmt_eur, height=220, bar_ratio=0.28, label="Стойност на подписаните договори по години") }}
+    </div>
+  </section>
+  {% endif %}
 
-<h2>Пълен списък</h2>
-<div data-table-container>
-  <div class="toolbar">
-    <label>
-      <span class="note">Търсене</span><br>
-      <input type="search" data-table-search placeholder="предмет, изпълнител, ЕИК…" aria-label="Търсене в таблицата">
-    </label>
-    <label>
-      <span class="note">Статус</span><br>
-      <select data-table-filter="signed" aria-label="Филтър по статус">
-        <option value="">Всички</option>
-        <option value="yes">Подписани договори</option>
-        <option value="no">Текущи процедури</option>
-      </select>
-    </label>
-  </div>
-  <p class="note">Показани: <span data-table-count>{{ contracts | length }}</span> от {{ contracts | length }}</p>
-  <div class="table-wrap">
-  <table data-sortable data-filterable>
-    <thead>
-      <tr>
-        <th data-sort="none">Дата</th>
-        <th data-sort="none">Предмет</th>
-        <th data-sort="none">Изпълнител</th>
-        <th data-sort="none" class="num">Стойност (EUR)</th>
-        <th data-sort="none" class="num">Оферти</th>
-        <th data-sort="none">Процедура</th>
-        <th data-sort="none">Източник</th>
-      </tr>
-    </thead>
-    <tbody>
-    {% for c in contracts %}
-      <tr data-signed="{{ 'yes' if c.is_signed else 'no' }}">
-        <td data-sort-value="{{ (c.contract_date or c.published_at).isoformat() if (c.contract_date or c.published_at) else '' }}">{{ (c.contract_date or c.published_at) | bgdate }}</td>
-        <td><a href="{{ root }}contracts/{{ c.source_id }}.html">{{ c.title or '(без заглавие)' }}</a></td>
-        <td>{{ c.contractor_name or '—' }}</td>
-        <td class="num" data-sort-value="{{ c.display_value_eur or 0 }}">{{ c.display_value_eur | eur }}{% if not c.is_signed %} <span class="note">(прогноза)</span>{% endif %}</td>
-        <td class="num" data-sort-value="{{ c.bids_received or -1 }}">{{ c.bids_received if c.bids_received is not none else '—' }}</td>
-        <td>{{ c.procedure_type or '—' }}</td>
-        <td><a href="{{ c.url }}" rel="noopener">ЦАИС ЕОП ↗</a></td>
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table>
-  </div>
+  <section class="block" data-table-container>
+    <div class="toolbar">
+      {{ m.search("Търси предмет, изпълнител, ЕИК…") }}
+      <label class="select">
+        <span class="visually-hidden">Статус</span>
+        <select class="input" data-table-filter="signed" aria-label="Филтър по статус">
+          <option value="">Всички статуси</option>
+          <option value="yes">Подписани договори</option>
+          <option value="no">Текущи процедури</option>
+        </select>
+      </label>
+      {{ m.count(contracts | length) }}
+    </div>
+    <div class="table-wrap">
+    <table class="table table--contracts table--stack" data-sortable data-filterable>
+      <thead>
+        <tr>
+          <th data-sort="none" class="col-date">Дата</th>
+          <th data-sort="none">Предмет</th>
+          <th data-sort="none" class="col-party">Изпълнител</th>
+          <th data-sort="none" class="num">Стойност</th>
+          <th data-sort="none" class="num col-bids">Оферти</th>
+          <th data-sort="none" class="col-proc">Процедура</th>
+          <th class="col-src"><span class="visually-hidden">Източник</span></th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for c in contracts %}
+        {% set d = c.contract_date or c.published_at %}
+        <tr data-signed="{{ 'yes' if c.is_signed else 'no' }}">
+          <td class="nowrap muted" data-sort-value="{{ d.isoformat() if d else '' }}">{{ d | bgdate }}</td>
+          <td><a class="row-link clamp-2" href="{{ root }}contracts/{{ c.source_id }}.html">{{ c.title or '(без заглавие)' }}</a></td>
+          <td>{% if c.contractor_name %}<span class="clamp-2 muted-strong">{{ c.contractor_name }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+          <td class="num" data-sort-value="{{ c.display_value_eur or 0 }}">{{ c.display_value_eur | eur }}{% if not c.is_signed %}<span class="sub">прогноза</span>{% endif %}</td>
+          <td class="num" data-label="Оферти" data-sort-value="{{ c.bids_received if c.bids_received is not none else -1 }}">{% if c.bids_received is not none %}{{ c.bids_received | num }}{% else %}<span class="muted">—</span>{% endif %}</td>
+          <td>{% if c.procedure_type %}{{ m.chip(c.procedure_type) }}{% else %}<span class="muted">—</span>{% endif %}</td>
+          <td class="col-src"><a class="ext" href="{{ c.url }}" rel="noopener" title="Отвори в ЦАИС ЕОП">ЕОП <span aria-hidden="true">↗</span></a></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    <p class="footnote">„Прогноза" — процедурата още няма сключен договор; показана е прогнозната стойност.
+    Броят оферти идва от СИГМА — виж <a href="{{ root }}methodology.html#dedupe">как се съпоставят двата източника</a>.</p>
+  </section>
 </div>
-<p class="explainer">„Прогноза" означава, че процедурата още няма сключен договор — показана е
-прогнозната стойност на поръчката вместо реалната стойност по договор.</p>
 {% endblock %}

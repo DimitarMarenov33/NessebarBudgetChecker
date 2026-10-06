@@ -88,7 +88,7 @@
         if (show) visible += 1;
       });
       if (countEl) {
-        countEl.textContent = String(visible);
+        countEl.textContent = visible.toLocaleString("en-US");
       }
     }
 
@@ -101,8 +101,23 @@
     applyFilters();
   }
 
+  // "/" focuses the page's search field (as in most keyboard-first apps),
+  // unless the user is already typing in a form control.
+  function enableSearchShortcut() {
+    var search = document.querySelector("[data-table-search]");
+    if (!search) return;
+    document.addEventListener("keydown", function (event) {
+      if (event.key !== "/" || event.metaKey || event.ctrlKey || event.altKey) return;
+      var tag = (document.activeElement && document.activeElement.tagName) || "";
+      if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
+      event.preventDefault();
+      search.focus();
+    });
+  }
+
   document.addEventListener("DOMContentLoaded", function () {
     Array.prototype.forEach.call(document.querySelectorAll("table[data-sortable]"), enableSorting);
     Array.prototype.forEach.call(document.querySelectorAll("table[data-filterable]"), enableFiltering);
+    enableSearchShortcut();
   });
 })();

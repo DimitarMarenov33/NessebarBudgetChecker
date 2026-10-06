@@ -2,87 +2,106 @@
 {% import "_macros.html" as m %}
 {% block title %}{{ c.title or c.source_id }} — Бюджетен монитор Несебър{% endblock %}
 {% block content %}
-<p class="breadcrumbs"><a href="{{ root }}contracts/index.html">← Всички поръчки</a></p>
-<h1>{{ c.title or '(без заглавие)' }}</h1>
-<p class="lede">
-{% if c.is_signed %}Подписан договор{% else %}Текуща процедура (все още няма сключен договор){% endif %}
-· Номер в ЦАИС ЕОП: {{ c.source_id }}
-</p>
+<div class="container">
+  {% call m.page_head("", c.title or "(без заглавие)", root ~ "contracts/index.html", "Всички поръчки") %}
+  <span class="meta-row">
+    {% if c.is_signed %}{{ m.chip("Подписан договор", "accent") }}{% else %}{{ m.chip("Текуща процедура", "neutral") }}{% endif %}
+    <span>№ {{ c.source_id }} в ЦАИС ЕОП</span>
+  </span>
+  {% endcall %}
 
-<dl class="kv-list">
-  <dt>Изпълнител</dt>
-  <dd>
-    {{ c.contractor_name or '—' }}
-    {% if c.contractor_slug %}
-      {% if c.contractor_eik and c.contractor_eik != "не се публикува" %}
-        (ЕИК <a href="{{ root }}contractors/{{ c.contractor_slug }}.html">{{ c.contractor_eik }}</a>)
-      {% else %}
-        (<a href="{{ root }}contractors/{{ c.contractor_slug }}.html">профил на изпълнителя</a>, ЕИК не е публикуван)
+  <section class="block">
+    <dl class="facts">
+      <div class="facts__row">
+        <dt>{{ c.value_label | capitalize }}</dt>
+        <dd class="facts__big">{{ c.display_value_eur | eur }}</dd>
+      </div>
+      {% if c.is_signed and c.estimated_value_eur is not none %}
+      <div class="facts__row">
+        <dt>Прогнозна стойност (преди възлагане)</dt>
+        <dd class="tnum">{{ c.estimated_value_eur | eur }}</dd>
+      </div>
       {% endif %}
-    {% endif %}
-  </dd>
+      <div class="facts__row">
+        <dt>Изпълнител</dt>
+        <dd>
+          {% if c.contractor_slug %}
+          <a href="{{ root }}contractors/{{ c.contractor_slug }}.html">{{ c.contractor_name or 'профил на изпълнителя' }}</a>
+          {% else %}{{ c.contractor_name or '—' }}{% endif %}
+          {% if c.contractor_eik and c.contractor_eik != "не се публикува" %}
+          <span class="muted">ЕИК {{ c.contractor_eik }}</span>
+          {% elif c.contractor_slug %}
+          <span class="muted">ЕИК не е публикуван</span>
+          {% endif %}
+        </dd>
+      </div>
+      <div class="facts__row">
+        <dt>Процедура</dt>
+        <dd>{% if c.procedure_type %}{{ m.chip(c.procedure_type) }}{% else %}—{% endif %}</dd>
+      </div>
+      <div class="facts__row">
+        <dt>Брой подадени оферти</dt>
+        <dd>
+          {% if c.bids_received is not none %}
+          <span class="tnum">{{ c.bids_received | num }}</span>{% if c.bids_received == 1 %} {{ m.chip("един участник", "warning") }}{% endif %}
+          {% else %}<span class="muted">няма данни</span>{% endif %}
+        </dd>
+      </div>
+      <div class="facts__row">
+        <dt>CPV код</dt>
+        <dd class="tnum">{{ c.cpv_code or '—' }}</dd>
+      </div>
+      <div class="facts__row">
+        <dt>Дата на публикуване</dt>
+        <dd class="tnum">{{ c.published_at | bgdate }}</dd>
+      </div>
+      {% if c.is_signed %}
+      <div class="facts__row">
+        <dt>Дата на договора</dt>
+        <dd class="tnum">{{ c.contract_date | bgdate }}</dd>
+      </div>
+      {% endif %}
+      <div class="facts__row">
+        <dt>Източник</dt>
+        <dd><a class="break" href="{{ c.url }}" rel="noopener">{{ c.url }} <span aria-hidden="true">↗</span></a></dd>
+      </div>
+    </dl>
+  </section>
 
-  <dt>{{ c.value_label | capitalize }}</dt>
-  <dd>{{ c.display_value_eur | eur }}</dd>
-
-  {% if c.is_signed and c.estimated_value_eur is not none %}
-  <dt>Прогнозна стойност (преди възлагане)</dt>
-  <dd>{{ c.estimated_value_eur | eur }}</dd>
+  {% if c.sigma_source_id %}
+  <section class="block">
+    <h2 class="block__title">Данни от СИГМА</h2>
+    <p class="block__sub">Съпоставен със запис <code>{{ c.sigma_source_id }}</code> в sigma.midt.bg по изпълнител,
+    стойност (±1%) и дата на договора (±3 дни) — <a href="{{ root }}methodology.html#dedupe">как работи съпоставянето</a>.</p>
+    <dl class="facts">
+      {% if c.sigma_unp %}<div class="facts__row"><dt>Уникален номер на поръчката (УНП)</dt><dd class="tnum">{{ c.sigma_unp }}</dd></div>{% endif %}
+      {% if c.sigma_procedure_type %}<div class="facts__row"><dt>Тип процедура (по СИГМА)</dt><dd>{{ c.sigma_procedure_type }}</dd></div>{% endif %}
+      {% if c.sigma_sector_code is not none %}<div class="facts__row"><dt>Код на сектор</dt><dd class="tnum">{{ c.sigma_sector_code }}</dd></div>{% endif %}
+      <div class="facts__row"><dt>Финансиране от ЕС</dt><dd>{{ "да" if c.sigma_eu_funded else "не" if c.sigma_eu_funded is not none else "няма данни" }}</dd></div>
+    </dl>
+  </section>
   {% endif %}
 
-  <dt>Процедура</dt>
-  <dd>{{ c.procedure_type or '—' }}</dd>
-
-  <dt>CPV код</dt>
-  <dd>{{ c.cpv_code or '—' }}</dd>
-
-  <dt>Дата на публикуване</dt>
-  <dd>{{ c.published_at | bgdate }}</dd>
-
-  {% if c.is_signed %}
-  <dt>Дата на договора</dt>
-  <dd>{{ c.contract_date | bgdate }}</dd>
-  {% endif %}
-
-  <dt>Брой подадени оферти</dt>
-  <dd>
-    {% if c.bids_received is not none %}
-      {{ c.bids_received }}{% if c.bids_received == 1 %} <span class="badge badge--warning">един участник</span>{% endif %}
+  <section class="block">
+    <h2 class="block__title">Сигнали по тази поръчка</h2>
+    {% if c.flags %}
+    <ul class="issues issues--static">
+      {% for f in c.flags %}
+      <li>
+        <div class="issue">
+          <span class="issue__sev">{{ m.sev_dot(f.severity) }}</span>
+          <span class="issue__rule"><span class="chip">{{ rule_labels.get(f.rule, f.rule) }}</span></span>
+          <span class="issue__msg issue__msg--full">{{ f.message }}{% if f.law_ref %} <span class="muted">({{ f.law_ref }})</span>{% endif %}</span>
+          <time class="issue__date">{{ f.created_at | bgdate }}</time>
+          <span class="issue__chev"></span>
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
     {% else %}
-      няма данни
+    <p class="empty">Няма регистрирани сигнали по тази поръчка.</p>
     {% endif %}
-  </dd>
-
-  <dt>Източник</dt>
-  <dd><a href="{{ c.url }}" rel="noopener">{{ c.url }} ↗</a></dd>
-</dl>
-
-{% if c.sigma_source_id %}
-<section>
-<h2>Данни от СИГМА</h2>
-<p class="explainer">Този запис е съпоставен с номер <code>{{ c.sigma_source_id }}</code> в СИГМА
-(sigma.midt.bg) по изпълнител, стойност (±1%) и дата на договора (±3 дни) — виж
-<a href="{{ root }}methodology.html#dedupe">методологията на съпоставяне</a>.</p>
-<dl class="kv-list">
-  {% if c.sigma_unp %}<dt>Уникален номер на поръчката (УНП)</dt><dd>{{ c.sigma_unp }}</dd>{% endif %}
-  {% if c.sigma_procedure_type %}<dt>Тип процедура (по СИГМА)</dt><dd>{{ c.sigma_procedure_type }}</dd>{% endif %}
-  {% if c.sigma_sector_code is not none %}<dt>Код на сектор</dt><dd>{{ c.sigma_sector_code }}</dd>{% endif %}
-  <dt>Финансиране от ЕС</dt><dd>{{ "да" if c.sigma_eu_funded else "не" if c.sigma_eu_funded is not none else "няма данни" }}</dd>
-</dl>
-</section>
-{% endif %}
-
-<section>
-<h2>Сигнали по тази поръчка</h2>
-{% if c.flags %}
-<ul>
-{% for f in c.flags %}
-<li>{{ m.severity_badge(f.severity) }} {{ f.message }}{% if f.rule %} <span class="note">({{ f.rule_label }})</span>{% endif %}</li>
-{% endfor %}
-</ul>
-{% else %}
-<p class="note">Няма регистрирани сигнали по тази поръчка.</p>
-{% endif %}
-<p><a href="{{ root }}flags/index.html">Всички сигнали →</a></p>
-</section>
+    <p class="more"><a class="link-arrow" href="{{ root }}flags/index.html">Всички сигнали {{ m.chevron() }}</a></p>
+  </section>
+</div>
 {% endblock %}

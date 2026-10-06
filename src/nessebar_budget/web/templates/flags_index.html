@@ -2,53 +2,76 @@
 {% import "_macros.html" as m %}
 {% block title %}Сигнали — Бюджетен монитор Несебър{% endblock %}
 {% block content %}
-<h1>Сигнали</h1>
-<p class="lede">Автоматични проверки за несъответствия в данните за поръчки и бюджет. Виж
-<a href="{{ root }}methodology.html">методологията</a> за пълния списък от правила и правните
-основания зад тях.</p>
-<div class="callout callout--disclaimer">
-<strong>Важно:</strong> сигнал тук означава „заслужава обяснение", не „доказано нарушение".
-Автоматичните правила откриват несъответствия (липсваща стойност, един-единствен участник и
-подобни) — възможно е да има напълно легитимно обяснение за всеки конкретен случай. Проверявайте
-контекста, преди да правите заключения.
-</div>
+<div class="container">
+  {% call m.page_head("Сигнали", "Сигнали") %}
+  Автоматични проверки за несъответствия в поръчките и бюджета, по публично описани
+  <a href="{{ root }}methodology.html#rules">правила</a>.
+  <span class="page-head__note"><strong>Важно:</strong> сигналът означава „заслужава обяснение", а не „доказано нарушение" —
+  за всеки случай може да има легитимно обяснение. Проверявайте контекста, преди да правите заключения.</span>
+  {% endcall %}
 
-{% if flags %}
-<p class="note">Общо {{ flags | length }} сигнал(а).</p>
-<div data-table-container>
-  <div class="toolbar">
-    <label><span class="note">Търсене</span><br>
-    <input type="search" data-table-search placeholder="правило, съобщение…" aria-label="Търсене в таблицата"></label>
-    <label><span class="note">Тежест</span><br>
-    <select data-table-filter="severity" aria-label="Филтър по тежест">
-      <option value="">Всички</option>
-      <option value="critical">Критично</option>
-      <option value="serious">Сериозно</option>
-      <option value="warning">За проверка</option>
-      <option value="good">Информативно</option>
-    </select></label>
-  </div>
-  <p class="note">Показани: <span data-table-count>{{ flags | length }}</span> от {{ flags | length }}</p>
-  <div class="table-wrap">
-  <table data-filterable>
-    <thead><tr><th>Дата</th><th>Тежест</th><th>Правило</th><th>Съобщение</th><th>Свързано с</th></tr></thead>
-    <tbody>
-    {% for f in flags %}
-    <tr data-severity="{{ (f.severity or 'warning') | lower }}">
-      <td>{{ f.created_at | bgdate }}</td>
-      <td>{{ m.severity_badge(f.severity) }}</td>
-      <td>{{ f.rule_label }}</td>
-      <td>{{ f.message }}{% if f.law_ref %} <span class="note">({{ f.law_ref }})</span>{% endif %}</td>
-      <td>{% if f.subject_href %}<a href="{{ f.subject_href }}">{{ f.subject_label }}</a>{% else %}—{% endif %}</td>
-    </tr>
+  {% if flags %}
+  <div class="stats stats--3 stats--compact" role="list">
+    {% for key in severity_order %}
+    <div class="stat" role="listitem">
+      <span class="stat__label"><span class="dot dot--{{ key }}" aria-hidden="true"></span>{{ severity_labels[key] }} тежест</span>
+      <span class="stat__value"><span class="figure">{{ flag_severity_counts[key] | num }}</span></span>
+    </div>
     {% endfor %}
-    </tbody>
-  </table>
   </div>
+
+  <section class="block" data-table-container>
+    <div class="toolbar">
+      {{ m.search("Търси правило, съобщение, договор…") }}
+      <label class="select">
+        <span class="visually-hidden">Тежест</span>
+        <select class="input" data-table-filter="severity" aria-label="Филтър по тежест">
+          <option value="">Всяка тежест</option>
+          {% for key in severity_order %}
+          <option value="{{ key }}">{{ severity_labels[key] }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="select">
+        <span class="visually-hidden">Правило</span>
+        <select class="input" data-table-filter="rule" aria-label="Филтър по правило">
+          <option value="">Всички правила</option>
+          {% for rule in flags | map(attribute='rule') | unique | sort %}
+          <option value="{{ rule }}">{{ rule_labels.get(rule, rule) }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      {{ m.count(flags | length) }}
+    </div>
+    <div class="table-wrap">
+    <table class="table table--flags table--stack" data-sortable data-filterable>
+      <thead>
+        <tr>
+          <th data-sort="none" class="col-sev">Тежест</th>
+          <th data-sort="none" class="col-rule">Правило</th>
+          <th>Съобщение</th>
+          <th class="col-subject">Свързано с</th>
+          <th data-sort="none" class="col-date">Дата</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for f in flags %}
+      {% set key = f.severity | sevkey %}
+      <tr id="flag-{{ f.id }}" data-severity="{{ key }}" data-rule="{{ f.rule }}">
+        <td data-sort-value="{{ severity_order.index(key) }}">{{ m.sev_chip(f.severity) }}</td>
+        <td data-sort-value="{{ f.rule_label }}"><span class="chip">{{ f.rule_label }}</span></td>
+        <td class="msg">{{ f.message }}{% if f.law_ref %}<span class="sub">{{ f.law_ref }}</span>{% endif %}</td>
+        <td>{% if f.subject_href %}<a class="row-link clamp-2" href="{{ f.subject_href }}">{{ f.subject_label }}</a>{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td class="nowrap muted" data-sort-value="{{ f.created_at.isoformat() if f.created_at else '' }}">{{ f.created_at | bgdate }}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </section>
+  {% else %}
+  <p class="empty">Все още няма регистрирани сигнали. Правилата за автоматична проверка са описани в
+  <a href="{{ root }}methodology.html#rules">методологията</a>.</p>
+  {% endif %}
 </div>
-{% else %}
-<p class="note">Все още няма регистрирани сигнали в базата данни. Правилата за автоматична
-проверка се разработват — виж <a href="{{ root }}methodology.html">методологията</a> за това
-какви проверки са планирани.</p>
-{% endif %}
 {% endblock %}

@@ -1,32 +1,44 @@
 {% extends "base.html" %}
+{% import "_macros.html" as m %}
 {% block title %}Данни — Бюджетен монитор Несебър{% endblock %}
 {% block content %}
-<h1>Данни за сваляне</h1>
-<p class="lede">Суровите данни зад този сайт, в отворени формати (CSV/JSON), генерирани при
-последното обновяване ({{ generated_at_label }}). Свободни са за повторна употреба.</p>
+{% set exports = [
+  ("contracts.csv", "CSV", "Всички " ~ (meta.counts.contracts_eop_total | num) ~ " записа от ЦАИС ЕОП, обогатени от СИГМА"),
+  ("contracts.json", "JSON", "Същите записи, в JSON"),
+  ("budget_line_items.csv", "CSV", "Капиталовата програма ред по ред — всички месеци и звена"),
+  ("cash_execution.csv", "CSV", "Касово изпълнение по параграфи — всички месеци"),
+  ("flags.json", "JSON", (meta.counts.flags | num) ~ " сигнала с правило, тежест и правно основание"),
+  ("meta.json", "JSON", "Метаданни за генерирането на сайта и съпоставянето със СИГМА"),
+] %}
+<div class="container">
+  {% call m.page_head("Данни", "Отворени данни") %}
+  Суровите данни зад сайта в CSV и JSON, генерирани при последното обновяване ({{ generated_at_label }}). Свободни за повторна употреба.
+  {% endcall %}
 
-<ul class="export-list">
-  <li><a href="{{ root }}data/contracts.csv">contracts.csv<code>всички {{ meta.counts.contracts_eop_total }} записа от ЦАИС ЕОП, обогатени от СИГМА</code></a></li>
-  <li><a href="{{ root }}data/contracts.json">contracts.json<code>същото, в JSON</code></a></li>
-  <li><a href="{{ root }}data/budget_line_items.csv">budget_line_items.csv<code>пълният ред на капиталовата програма, всички месеци и звена</code></a></li>
-  <li><a href="{{ root }}data/cash_execution.csv">cash_execution.csv<code>касово изпълнение по параграфи, всички месеци</code></a></li>
-  <li><a href="{{ root }}data/flags.json">flags.json<code>{{ meta.counts.flags }} сигнал(а)</code></a></li>
-  <li><a href="{{ root }}data/meta.json">meta.json<code>метаданни за генерирането на сайта</code></a></li>
-</ul>
+  <section class="block">
+    <ul class="files">
+      {% for name, kind, desc in exports %}
+      <li>
+        <a class="file" href="{{ root }}data/{{ name }}">
+          <span class="file__kind">{{ kind }}</span>
+          <span class="file__main"><span class="file__name">{{ name }}</span><span class="file__desc">{{ desc }}</span></span>
+          <svg class="file__icon" width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 2.5v7M4 6.75 7 9.75l3-3M3 12h8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </a>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
 
-<h2>Обобщение</h2>
-<dl class="kv-list">
-  <dt>Поръчки в ЦАИС ЕОП</dt>
-  <dd>{{ meta.counts.contracts_eop_total }} ({{ meta.counts.contracts_signed }} подписани, {{ meta.counts.contracts_open }} текущи)</dd>
-  <dt>Съпоставени със СИГМА</dt>
-  <dd>{{ meta.sigma_dedupe.matched }} от {{ meta.sigma_dedupe.eop_with_value_and_eik }} допустими договора</dd>
-  <dt>Изпълнители</dt>
-  <dd>{{ meta.counts.contractors }}</dd>
-  <dt>Месеци в капиталовата програма</dt>
-  <dd>{{ meta.counts.budget_periods | join(", ") }}</dd>
-  <dt>Месеци в касовото изпълнение</dt>
-  <dd>{{ meta.counts.cash_periods | join(", ") }}</dd>
-  <dt>Генерирано на</dt>
-  <dd>{{ meta.generated_at }}</dd>
-</dl>
+  <section class="block">
+    <h2 class="block__title">Обобщение</h2>
+    <dl class="facts">
+      <div class="facts__row"><dt>Поръчки в ЦАИС ЕОП</dt><dd class="tnum">{{ meta.counts.contracts_eop_total | num }} <span class="muted">· {{ meta.counts.contracts_signed | num }} подписани, {{ meta.counts.contracts_open | num }} текущи</span></dd></div>
+      <div class="facts__row"><dt>Съпоставени със СИГМА</dt><dd class="tnum">{{ meta.sigma_dedupe.matched | num }} <span class="muted">от {{ meta.sigma_dedupe.eop_with_value_and_eik | num }} допустими договора</span></dd></div>
+      <div class="facts__row"><dt>Изпълнители</dt><dd class="tnum">{{ meta.counts.contractors | num }}</dd></div>
+      <div class="facts__row"><dt>Месеци в капиталовата програма</dt><dd class="tnum">{% for p in meta.counts.budget_periods %}{{ p }}{% if not loop.last %}, {% endif %}{% endfor %}</dd></div>
+      <div class="facts__row"><dt>Месеци в касовото изпълнение</dt><dd class="tnum">{% for p in meta.counts.cash_periods %}{{ p }}{% if not loop.last %}, {% endif %}{% endfor %}</dd></div>
+      <div class="facts__row"><dt>Генерирано на</dt><dd class="tnum">{{ meta.generated_at }}</dd></div>
+    </dl>
+  </section>
+</div>
 {% endblock %}

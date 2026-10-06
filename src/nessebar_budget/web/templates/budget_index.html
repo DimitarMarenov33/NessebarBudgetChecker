@@ -2,121 +2,16 @@
 {% import "_macros.html" as m %}
 {% block title %}Бюджет — капиталова програма — Бюджетен монитор Несебър{% endblock %}
 {% block content %}
-<h1>Капиталова програма</h1>
-<p class="lede">„Разчет за финансиране на капиталовите разходи" — консолидираната (всички звена,
-ред „Общо") месечна справка за капиталовите обекти на Община Несебър: колко е планирано,
-колко е похарчено до момента и кои обекти са добавени или увеличени през годината. Източник:
-месечните отчети на nesebar.bg/reports.html.</p>
-
-{% if not latest %}
-<p class="note">Няма заредени данни за капиталовата програма.</p>
-{% else %}
-
-<p class="note">Данни за {{ other_units_count }} отделни звена (кметства, училища, детски градини)
-също са налични в база данни — тук е показан само консолидираният ред „Общо".</p>
-
-<div class="pill-nav" aria-label="Избор на месец">
-{% for p in periods %}
-<a href="{{ root }}budget/{{ p }}.html" {% if p == latest_period %}aria-current="page"{% endif %}>{{ p | period }}</a>
-{% endfor %}
+<div class="container">
+  {% call m.page_head("Бюджет", "Капиталова програма") %}
+  Какво е планирано, колко е похарчено и кои обекти са добавени през годината — по месечните отчети на nesebar.bg.
+  {% endcall %}
+  {% if not latest %}
+  <p class="empty">Няма заредени данни за капиталовата програма.</p>
+  {% else %}
+  {% with data = latest, period = latest_period %}{% include "_budget_body.html" %}{% endwith %}
+  <p class="footnote">Показан е консолидираният ред „Общо". Данни за още {{ other_units_count | num }} звена (кметства,
+  училища, детски градини) са в <a href="{{ root }}data/budget_line_items.csv">budget_line_items.csv</a>.</p>
+  {% endif %}
 </div>
-
-<div class="stat-grid">
-  <div class="stat-tile">
-    <span class="stat-tile__label">План за {{ latest_period[:4] }} г. ({{ latest_period | period }})</span>
-    <span class="stat-tile__value">{{ latest.grand_total.plan_current | eur }}</span>
-  </div>
-  <div class="stat-tile">
-    <span class="stat-tile__label">Изразходвано към {{ latest_period | period }}</span>
-    <span class="stat-tile__value">{{ latest.grand_total.spent_period | eur }}</span>
-    <span class="stat-tile__note">{{ latest.grand_total.pct_executed | pct }} изпълнение на годишния план</span>
-  </div>
-  <div class="stat-tile">
-    <span class="stat-tile__label">Обща стойност на всички обекти (вкл. предходни години)</span>
-    <span class="stat-tile__value">{{ latest.grand_total.estimated_total | eur }}</span>
-    <span class="stat-tile__note">от които {{ latest.grand_total.spent_prior | eur }} похарчени преди {{ latest_period[:4] }} г.</span>
-  </div>
-</div>
-
-<h2>По функции</h2>
-<p class="explainer">План за годината срещу похарчено към {{ latest_period | period }}, по
-функционална класификация.</p>
-{{ m.hbar_chart(function_chart_items, fmt_eur, "план за годината", "похарчено") }}
-
-<div class="table-wrap">
-<table>
-<thead><tr><th>Функция</th><th class="num">План</th><th class="num">Похарчено</th><th class="num">% изпълнение</th></tr></thead>
-<tbody>
-{% for f in latest.function_totals %}
-<tr>
-<td>{{ f.name }}</td>
-<td class="num">{{ f.plan_current | eur }}</td>
-<td class="num">{{ f.spent_period | eur }}</td>
-<td class="num">{{ f.pct_executed | pct if f.pct_executed is not none else "—" }}</td>
-</tr>
-{% endfor %}
-</tbody>
-</table>
-</div>
-
-<h2>Промени спрямо {{ changes.previous | period }}</h2>
-{% if changes.added %}
-<h3>Нови обекти ({{ changes.added | length }})</h3>
-<ul>
-{% for o in changes.added %}
-<li>{{ o.object_name }} <span class="note">({{ o.function_name }})</span> — план {{ o.plan_current | eur }}</li>
-{% endfor %}
-</ul>
-{% else %}
-<p class="note">Няма нови обекти спрямо предходния месец.</p>
-{% endif %}
-
-{% if changes.increased %}
-<h3>Увеличен план ({{ changes.increased | length }})</h3>
-<ul>
-{% for o in changes.increased %}
-<li>{{ o.object_name }} <span class="note">({{ o.function_name }})</span> — от {{ o.previous_plan | eur }} на {{ o.plan_current | eur }} (+{{ o.delta | eur }})</li>
-{% endfor %}
-</ul>
-{% else %}
-<p class="note">Няма обекти с увеличен план спрямо предходния месец.</p>
-{% endif %}
-
-<h2>Всички обекти за {{ latest_period | period }}</h2>
-<div data-table-container>
-  <div class="toolbar">
-    <label><span class="note">Търсене</span><br>
-    <input type="search" data-table-search placeholder="обект, функция…" aria-label="Търсене в таблицата"></label>
-  </div>
-  <p class="note">Показани: <span data-table-count>{{ latest.object_count }}</span> от {{ latest.object_count }}</p>
-  <div class="table-wrap">
-  <table data-sortable data-filterable>
-    <thead>
-      <tr>
-        <th data-sort="none">Функция</th>
-        <th data-sort="none">Обект</th>
-        <th data-sort="none" class="num">Обща стойност</th>
-        <th data-sort="none" class="num">План {{ latest_period[:4] }}</th>
-        <th data-sort="none" class="num">Похарчено</th>
-        <th data-sort="none" class="num">% изпълнение</th>
-      </tr>
-    </thead>
-    <tbody>
-    {% for o in latest.objects %}
-    <tr>
-      <td>{{ o.function_name }}</td>
-      <td>{{ o.object_name }}</td>
-      <td class="num" data-sort-value="{{ o.estimated_total or 0 }}">{{ o.estimated_total | eur }}</td>
-      <td class="num" data-sort-value="{{ o.plan_current or 0 }}">{{ o.plan_current | eur }}</td>
-      <td class="num" data-sort-value="{{ o.spent_period or 0 }}">{{ o.spent_period | eur }}</td>
-      <td class="num" data-sort-value="{{ o.pct_executed or 0 }}">{{ o.pct_executed | pct if o.pct_executed is not none else "—" }}</td>
-    </tr>
-    {% endfor %}
-    </tbody>
-  </table>
-  </div>
-</div>
-<p class="explainer">„% изпълнение" = похарчено през {{ latest_period[:4] }} г. / план за {{ latest_period[:4] }} г.
-за съответния обект. Над 100% означава преразход спрямо последния приет план.</p>
-{% endif %}
 {% endblock %}

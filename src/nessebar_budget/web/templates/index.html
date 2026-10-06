@@ -1,89 +1,126 @@
 {% extends "base.html" %}
 {% import "_macros.html" as m %}
-{% block title %}Бюджетен монитор Несебър — начало{% endblock %}
+{% block title %}Бюджетен монитор Несебър — къде отиват парите на общината{% endblock %}
 {% block content %}
-<h1>Бюджетен монитор Несебър</h1>
-<p class="lede">Независим граждански проект, който събира публични данни за обществените поръчки
-и бюджета на Община Несебър на едно място — на прост, разбираем български, с линк към
-първоизточника при всяко число.</p>
 
-<div class="stat-grid">
-  {{ m.stat_tile("Обществени поръчки в ЦАИС ЕОП", contracts_count | num, signed_count | string ~ " подписани договора, " ~ open_count | string ~ " текущи процедури") }}
-  {{ m.stat_tile("Обща стойност на подписаните договори", total_signed_value | eur, "сума на всички подписани договори от 2020 г. насам") }}
-  {% if latest_budget %}
-  {{ m.stat_tile(
-      "Капиталова програма — " ~ (latest_budget_period | period),
-      (latest_budget.grand_total.spent_period | eur),
-      "от план " ~ (latest_budget.grand_total.plan_current | eur) ~ " за тази година — "
-      ~ (latest_budget.grand_total.pct_executed | pct) ~ " изпълнение"
-  ) }}
-  {% endif %}
-  {% if latest_cash %}
-  {{ m.stat_tile("Касови разходи от началото на " ~ (latest_cash_period[:4]), latest_cash.expense_total | eur, "към " ~ (latest_cash_period | period) ~ ", по отчет Б1 на Община Несебър") }}
-  {% endif %}
-</div>
+{# ---- Hero + headline numbers ------------------------------------------ #}
+<section class="hero">
+  <div class="container">
+    <a class="hero__badge" href="{{ root }}data/index.html">
+      <span class="dot dot--accent" aria-hidden="true"></span>
+      <span>Обновено {{ generated_at_label[:10] }}</span>
+      <span class="hero__badge-sep" aria-hidden="true"></span>
+      <span class="hero__badge-link">Отворени данни {{ m.chevron() }}</span>
+    </a>
+    <h1 class="hero__title">Къде отиват парите<br class="hero__br"> на Община Несебър?</h1>
+    <p class="hero__sub">Независим граждански монитор на обществените поръчки и бюджета на общината —
+    по публичните данни на ЦАИС ЕОП, СИГМА и месечните отчети на nesebar.bg.</p>
+    <div class="hero__actions">
+      <a class="btn btn--primary" href="{{ root }}flags/index.html">Виж сигналите</a>
+      <a class="btn btn--ghost" href="{{ root }}contracts/index.html">Разгледай поръчките</a>
+    </div>
 
-<section>
-<h2>Как работи</h2>
-<p class="lede">Сайтът не публикува собствени данни — той препубликува и обяснява данни, които
-Община Несебър и държавните институции вече са длъжни да оповестяват публично. Всяко число води
-към източника си:</p>
-<dl class="kv-list">
-  <dt>Поръчки и договори</dt>
-  <dd>от <strong>ЦАИС ЕОП</strong> (app.eop.bg) — централната платформа за обществени поръчки —
-  обогатени с брой подадени оферти от <strong>СИГМА</strong> (sigma.midt.bg), платформа за
-  прозрачност на АОП. Виж <a href="{{ root }}methodology.html#dedupe">как се свързват двата
-  източника</a>.</dd>
-  <dt>Капиталова програма</dt>
-  <dd>от месечните отчети за изпълнение на бюджета, публикувани на nesebar.bg/reports.html.</dd>
-  <dt>Касово изпълнение</dt>
-  <dd>от месечния отчет „Б1" (касово изпълнение по параграфи), също от nesebar.bg.</dd>
-  <dt>Сигнали</dt>
-  <dd>автоматични проверки за несъответствия (напр. липсваща стойност на договор) — виж
-  <a href="{{ root }}methodology.html">методологията</a> за пълния списък от правила.</dd>
-</dl>
-<p class="explainer">Сайтът се генерира статично от локална база данни; няма сървър, няма
-проследяване, няма реклами.</p>
+    <div class="stats stats--4" role="list">
+      <a class="stat" role="listitem" href="{{ root }}contracts/index.html">
+        <span class="stat__label">Договори{% if first_year %} {{ first_year }}–{{ last_year }}{% endif %}</span>
+        <span class="stat__value">{{ m.figure(total_signed_value) }}</span>
+        <span class="stat__note">{{ signed_count | num }} подписани · {{ open_count | num }} текущи процедури</span>
+      </a>
+      {% if latest_budget %}
+      {% set gt = latest_budget.grand_total %}
+      <a class="stat" role="listitem" href="{{ root }}budget/index.html">
+        <span class="stat__label">Капиталов план {{ latest_budget_period[:4] }}</span>
+        <span class="stat__value">{{ m.figure(gt.spent_period) }}</span>
+        {{ m.meter(gt.pct_executed, label=(gt.pct_executed | pct) ~ " изпълнение") }}
+        <span class="stat__note"><strong>{{ gt.pct_executed | pct }}</strong> от плана {{ gt.plan_current | eur }}</span>
+      </a>
+      {% endif %}
+      {% if latest_cash %}
+      <a class="stat" role="listitem" href="{{ root }}cash/index.html">
+        <span class="stat__label">Касов разход {{ latest_cash_period[:4] }}</span>
+        <span class="stat__value">{{ m.figure(latest_cash.expense_total) }}</span>
+        <span class="stat__note">От началото на годината до {{ latest_cash_period | period }}</span>
+      </a>
+      {% endif %}
+      <a class="stat" role="listitem" href="{{ root }}flags/index.html">
+        <span class="stat__label">Отворени сигнали</span>
+        <span class="stat__value"><span class="figure">{{ flags_total | num }}</span></span>
+        <span class="stat__note sev-breakdown">
+          {% for key in severity_order %}
+          <span title="Тежест: {{ severity_labels[key] }}"><span class="dot dot--{{ key }}" aria-hidden="true"></span>{{ flag_severity_counts[key] | num }} {{ {"high": "високи", "warning": "средни", "info": "ниски"}[key] }}</span>
+          {% endfor %}
+        </span>
+      </a>
+    </div>
+  </div>
 </section>
 
-{% if latest_flags %}
-<section>
-<h2>Последни сигнали</h2>
-<p class="lede">{{ flags_total }} сигнал(а) общо. Сигналите са <strong>автоматично откроени
-несъответствия</strong>, не доказателство за нарушение — всеки изисква проверка на контекста.</p>
-<div class="table-wrap">
-<table>
-<thead><tr><th>Дата</th><th>Тежест</th><th>Съобщение</th></tr></thead>
-<tbody>
-{% for f in latest_flags %}
-<tr>
-<td>{{ f.created_at | bgdate }}</td>
-<td>{{ m.severity_badge(f.severity) }}</td>
-<td>{{ f.message }}{% if f.subject_href %} — <a href="{{ root }}flags/index.html">виж в сигналите</a>{% endif %}</td>
-</tr>
-{% endfor %}
-</tbody>
-</table>
-</div>
-<p><a href="{{ root }}flags/index.html">Всички сигнали →</a></p>
+{# ---- Latest flags --------------------------------------------------------- #}
+<section class="section">
+  <div class="container">
+    <div class="section-head">
+      <h2 class="section-head__title">Последни сигнали</h2>
+      <p class="section-head__text">Автоматично откроени несъответствия в договорите и бюджета.
+      Всеки сигнал е повод за въпрос, не доказателство за нарушение.</p>
+    </div>
+    {% if latest_flags %}
+    <ul class="issues">
+      {% for f in latest_flags %}
+      {{ m.flag_row(f, root) }}
+      {% endfor %}
+    </ul>
+    <p class="more"><a class="link-arrow" href="{{ root }}flags/index.html">Всички {{ flags_total | num }} сигнала {{ m.chevron() }}</a></p>
+    {% else %}
+    <p class="empty">Все още няма регистрирани сигнали. Правилата за автоматична проверка са описани в
+    <a href="{{ root }}methodology.html#rules">методологията</a>.</p>
+    {% endif %}
+  </div>
 </section>
-{% else %}
-<section>
-<h2>Сигнали</h2>
-<p class="lede">Все още няма регистрирани сигнали в базата данни. Правилата за автоматична
-проверка се разработват — виж <a href="{{ root }}methodology.html">методологията</a>.</p>
-</section>
-{% endif %}
 
-<section>
-<h2>Договори по години</h2>
-<p class="explainer">Обща стойност на подписаните договори за всяка година (по дата на
-договора), извлечени от ЦАИС ЕОП.</p>
-{% if year_chart_items %}
-{{ m.vbar_chart(year_chart_items, fmt_eur) }}
-{% else %}
-<p class="note">Няма достатъчно данни за диаграма.</p>
-{% endif %}
-<p><a href="{{ root }}contracts/index.html">Всички поръчки и договори →</a></p>
+{# ---- Contracts by year ---------------------------------------------------- #}
+<section class="section">
+  <div class="container split">
+    <div class="split__text">
+      <h2 class="section-head__title">Договори по години</h2>
+      <p class="section-head__text">Обща стойност на подписаните договори според датата на сключване,
+      по данни от ЦАИС ЕОП.</p>
+      <p class="more"><a class="link-arrow" href="{{ root }}contracts/index.html">Всички поръчки {{ m.chevron() }}</a></p>
+    </div>
+    <div class="card split__visual">
+      {% if year_chart_items %}
+      {{ m.vbar_chart(year_chart_items, fmt_eur, height=260, label="Стойност на подписаните договори по години") }}
+      {% else %}
+      <p class="empty">Няма достатъчно данни за диаграма.</p>
+      {% endif %}
+    </div>
+  </div>
+</section>
+
+{# ---- How it works --------------------------------------------------------- #}
+<section class="section">
+  <div class="container">
+    <h2 class="statement">Как работи. <span>Сайтът не създава собствени данни — той събира,
+    съпоставя и обяснява това, което общината и държавата вече публикуват.</span></h2>
+    <div class="how">
+      <div class="how__item">
+        <p class="how__index">01</p>
+        <h3>Източници</h3>
+        <p>Поръчки от ЦАИС ЕОП, обогатени с броя оферти от СИГМА; бюджет и касово изпълнение от отчетите на nesebar.bg.</p>
+        <a class="link-arrow" href="{{ root }}methodology.html">Методология {{ m.chevron() }}</a>
+      </div>
+      <div class="how__item">
+        <p class="how__index">02</p>
+        <h3>Правила</h3>
+        <p>Публично описани автоматични проверки откриват несъответствия — като един участник или късно публикуване.</p>
+        <a class="link-arrow" href="{{ root }}methodology.html#rules">Правилата {{ m.chevron() }}</a>
+      </div>
+      <div class="how__item">
+        <p class="how__index">03</p>
+        <h3>Данни</h3>
+        <p>Всичко зад сайта е свободно за сваляне като CSV и JSON — без регистрация, без проследяване.</p>
+        <a class="link-arrow" href="{{ root }}data/index.html">Свали данните {{ m.chevron() }}</a>
+      </div>
+    </div>
+  </div>
 </section>
 {% endblock %}

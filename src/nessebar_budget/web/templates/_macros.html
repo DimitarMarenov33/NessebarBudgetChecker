@@ -1,97 +1,123 @@
-{% macro stat_tile(label, value, note="") %}
-<div class="stat-tile">
-  <span class="stat-tile__label">{{ label }}</span>
-  <span class="stat-tile__value">{{ value }}</span>
-  {% if note %}<span class="stat-tile__note">{{ note }}</span>{% endif %}
-</div>
+{# ---------------------------------------------------------------------
+   Shared UI macros. Every number goes through the `num` / `eur` / `pct`
+   filters (comma thousands separators, no decimals for amounts).
+   --------------------------------------------------------------------- #}
+
+{# Page header: small uppercase eyebrow, large title, one muted sentence. #}
+{% macro page_head(eyebrow, title, back_href="", back_label="") %}
+<header class="page-head">
+  {% if back_href %}
+  <a class="page-head__back" href="{{ back_href }}"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M7.5 2.5 4 6l3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>{{ back_label }}</a>
+  {% elif eyebrow %}
+  <p class="eyebrow">{{ eyebrow }}</p>
+  {% endif %}
+  <h1 class="page-head__title">{{ title }}</h1>
+  {% if caller %}<div class="page-head__sub">{{ caller() }}</div>{% endif %}
+</header>
 {% endmacro %}
 
-{% macro severity_badge(severity) %}
-{%- set sev = (severity or 'warning') | lower -%}
-{%- if sev in ('critical', 'high') -%}
-<span class="badge badge--critical">критично</span>
-{%- elif sev in ('serious', 'medium') -%}
-<span class="badge badge--serious">сериозно</span>
-{%- elif sev in ('good', 'info', 'ok') -%}
-<span class="badge badge--good">информативно</span>
-{%- else -%}
-<span class="badge badge--warning">за проверка</span>
-{%- endif -%}
-{% endmacro %}
+{# Big tile figure: comma-grouped number with a smaller muted unit. #}
+{% macro figure(value, unit="€") -%}
+<span class="figure">{{ value | num }}{% if unit %}<span class="figure__unit">{{ unit }}</span>{% endif %}</span>
+{%- endmacro %}
 
-{# Flat single-series vertical bar chart. items: list of {label, value}.
-   Per the "label selectively" rule, only the tallest bar and the most
-   recent one get a direct value label -- every bar still carries the exact
-   value as a native hover tooltip (<title>), and the full figures are
-   always in the accompanying data table/export. #}
-{% macro vbar_chart(items, value_fmt, height=200, bar_width=34, gap=22) %}
+{# Thin progress/meter bar; `fraction` is 0..1 (clamped for display). #}
+{% macro meter(fraction, tone="accent", label="") -%}
+{%- set f = fraction if fraction is not none else 0 -%}
+{%- set w = [[f * 100, 0] | max, 100] | min -%}
+<span class="meter{% if tone != 'accent' %} meter--{{ tone }}{% endif %}"{% if label %} role="img" aria-label="{{ label }}"{% endif %}><span class="meter__fill" style="width: {{ '%.2f' | format(w) }}%"></span></span>
+{%- endmacro %}
+
+{# Severity as a subtle chip: coloured dot + text, never a filled badge. #}
+{% macro sev_chip(severity) -%}
+{%- set key = severity | sevkey -%}
+<span class="chip chip--plain"><span class="dot dot--{{ key }}" aria-hidden="true"></span>{{ severity | sevlabel }}</span>
+{%- endmacro %}
+
+{% macro sev_dot(severity) -%}
+{%- set key = severity | sevkey -%}
+<span class="dot dot--{{ key }}" role="img" aria-label="Тежест: {{ severity | sevlabel }}" title="Тежест: {{ severity | sevlabel }}"></span>
+{%- endmacro %}
+
+{# Neutral chip (procedure type, rule label, status). #}
+{% macro chip(text, tone="neutral") -%}
+<span class="chip"><span class="dot dot--{{ tone }}" aria-hidden="true"></span>{{ text }}</span>
+{%- endmacro %}
+
+{% macro chevron() -%}
+<svg class="chevron" width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M5.25 3.5 8.75 7l-3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+{%- endmacro %}
+
+{# One compact flag row (home page, contract detail). The whole row links
+   to the flagged subject when known, otherwise to the flag's anchor on the
+   flags page. #}
+{% macro flag_row(f, root) -%}
+{%- set href = (root ~ (f.subject_href | sitepath)) if f.subject_href else (root ~ "flags/index.html#flag-" ~ f.id) -%}
+<li>
+  <a class="issue" href="{{ href }}">
+    <span class="issue__sev">{{ sev_dot(f.severity) }}</span>
+    <span class="issue__rule"><span class="chip">{{ f.rule_label }}</span></span>
+    <span class="issue__msg">{{ f.message }}</span>
+    <time class="issue__date">{{ f.created_at | bgdate }}</time>
+    <span class="issue__chev">{{ chevron() }}</span>
+  </a>
+</li>
+{%- endmacro %}
+
+{# Search field + optional count, used above every filterable table. #}
+{% macro search(placeholder, label="Търсене в таблицата") -%}
+<label class="search">
+  <svg class="search__icon" width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><circle cx="6" cy="6" r="4.25" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="m9.25 9.25 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+  <input class="input" type="search" data-table-search placeholder="{{ placeholder }}" aria-label="{{ label }}">
+  <kbd class="search__kbd" aria-hidden="true">/</kbd>
+</label>
+{%- endmacro %}
+
+{% macro count(total) -%}
+<p class="toolbar__count"><span data-table-count>{{ total | num }}</span> от {{ total | num }}</p>
+{%- endmacro %}
+
+{# Flat single-series column chart. items: list of {label, value}.
+   Rendered as an SVG without a viewBox: x/width are percentages (so the
+   chart fills any container), y/height are pixels (so text never scales).
+   Only the tallest and the most recent bar get a direct value label (the
+   latest bar is the one accent-coloured mark); every bar carries its exact
+   value as a native hover tooltip, and the full figures are in the tables
+   and CSV exports. #}
+{% macro vbar_chart(items, value_fmt, height=240, bar_ratio=0.34, label="Диаграма") %}
 {%- set max_value = (items | map(attribute='value') | max) if items else 1 -%}
 {%- if max_value <= 0 -%}{%- set max_value = 1 -%}{%- endif -%}
-{%- set width = (items | length) * (bar_width + gap) + gap -%}
-{%- set label_h = 20 -%}
-{%- set value_h = 16 -%}
-{%- set plot_h = height - label_h - value_h -%}
-<div class="chart">
-  <svg viewBox="0 0 {{ width }} {{ height }}" role="img" aria-label="Диаграма">
-    <line class="baseline" x1="0" y1="{{ value_h + plot_h }}" x2="{{ width }}" y2="{{ value_h + plot_h }}"></line>
+{%- set n = items | length -%}
+{%- set slot = 100.0 / (n if n else 1) -%}
+{%- set bw = slot * bar_ratio -%}
+{%- set top_pad = 28 -%}
+{%- set bottom_pad = 28 -%}
+{%- set plot_h = height - top_pad - bottom_pad -%}
+{%- set base_y = top_pad + plot_h -%}
+<figure class="chart">
+  <svg class="chart__svg" width="100%" height="{{ height }}" role="img" aria-label="{{ label }}">
     {% for item in items %}
-    {%- set bar_h = (item.value / max_value * plot_h) if item.value > 0 else 0 -%}
-    {%- set x = gap + loop.index0 * (bar_width + gap) -%}
-    {%- set y = value_h + plot_h - bar_h -%}
-    {%- set show_label = (item.value == max_value) or loop.last -%}
-    {% if show_label %}
-    <text class="value-label" x="{{ x + bar_width / 2 }}" y="{{ y - 6 }}" text-anchor="middle">{{ value_fmt(item.value) }}</text>
-    {% endif %}
-    <rect class="bar" x="{{ x }}" y="{{ y }}" width="{{ bar_width }}" height="{{ bar_h }}" rx="2">
+    {%- set v = item.value if item.value and item.value > 0 else 0 -%}
+    {#- non-zero values get at least a 2px sliver so they stay visible/hoverable -#}
+    {%- set bar_h = ([v / max_value * plot_h, 2] | max) if v > 0 else 0 -%}
+    {%- set cx = slot * (loop.index0 + 0.5) -%}
+    {%- set x = cx - bw / 2 -%}
+    {%- set y = base_y - bar_h -%}
+    {%- set is_max = (item.value == max_value) -%}
+    <g class="chart__col{% if loop.last %} chart__col--accent{% endif %}">
+      <rect class="chart__hit" x="{{ '%.3f' | format(slot * loop.index0) }}%" y="0" width="{{ '%.3f' | format(slot) }}%" height="{{ height }}"></rect>
+      {% if bar_h >= 1 %}
+      <rect class="chart__bar" x="{{ '%.3f' | format(x) }}%" y="{{ '%.1f' | format(y) }}" width="{{ '%.3f' | format(bw) }}%" height="{{ '%.1f' | format(bar_h) }}" rx="4"></rect>
+      {% if bar_h > 4 %}<rect class="chart__bar" x="{{ '%.3f' | format(x) }}%" y="{{ '%.1f' | format(base_y - 4) }}" width="{{ '%.3f' | format(bw) }}%" height="4"></rect>{% endif %}
+      {% endif %}
+      {% if is_max or loop.last %}
+      <text class="chart__value{% if loop.last and n > 1 %} chart__value--last{% endif %}" x="{{ '%.3f' | format(cx) }}%" y="{{ '%.1f' | format(y - 10) }}" text-anchor="middle">{{ value_fmt(item.value) }}</text>
+      {% endif %}
+      <text class="chart__cat" x="{{ '%.3f' | format(cx) }}%" y="{{ height - 6 }}" text-anchor="middle">{{ item.label }}</text>
       <title>{{ item.label }}: {{ value_fmt(item.value) }}</title>
-    </rect>
-    <text class="cat-label" x="{{ x + bar_width / 2 }}" y="{{ height - 4 }}" text-anchor="middle">{{ item.label }}</text>
+    </g>
     {% endfor %}
+    <line class="chart__baseline" x1="0" y1="{{ base_y + 0.5 }}" x2="100%" y2="{{ base_y + 0.5 }}"></line>
   </svg>
-</div>
-{% endmacro %}
-
-{# Flat horizontal bar chart, one or two series. items: list of
-   {label, value, value2 (optional)}. #}
-{% macro hbar_chart(items, value_fmt, legend1="", legend2="", row_h=26, label_w=215) %}
-{%- set values = [] -%}
-{%- for item in items -%}
-  {%- set _ = values.append(item.value) -%}
-  {%- if item.value2 is defined and item.value2 is not none -%}{%- set _ = values.append(item.value2) -%}{%- endif -%}
-{%- endfor -%}
-{%- set max_value = (values | max) if values else 1 -%}
-{%- if max_value <= 0 -%}{%- set max_value = 1 -%}{%- endif -%}
-{%- set has_second = items and (items[0].value2 is defined and items[0].value2 is not none) -%}
-{%- set bar_h = 10 if has_second else 14 -%}
-{%- set row_h = (row_h + 12) if has_second else row_h -%}
-{%- set width = label_w + 450 -%}
-{%- set plot_w = width - label_w - 80 -%}
-{%- set height = (items | length) * row_h + 8 -%}
-<div class="chart">
-  <svg viewBox="0 0 {{ width }} {{ height }}" role="img" aria-label="Диаграма">
-    {% for item in items %}
-    {%- set row_y = loop.index0 * row_h -%}
-    {%- set bw1 = (item.value / max_value * plot_w) if item.value > 0 else 0 -%}
-    <text class="cat-label" x="0" y="{{ row_y + row_h / 2 + 4 }}">{{ item.label }}</text>
-    <rect class="bar" x="{{ label_w }}" y="{{ row_y + (row_h - bar_h * (2 if has_second else 1) - (4 if has_second else 0)) / 2 }}" width="{{ bw1 }}" height="{{ bar_h }}" rx="2">
-      <title>{{ item.label }}{% if legend1 %} — {{ legend1 }}{% endif %}: {{ value_fmt(item.value) }}</title>
-    </rect>
-    <text class="value-label" x="{{ label_w + bw1 + 6 }}" y="{{ row_y + (row_h - bar_h * (2 if has_second else 1) - (4 if has_second else 0)) / 2 + bar_h - 2 }}">{{ value_fmt(item.value) }}</text>
-    {% if has_second %}
-    {%- set bw2 = (item.value2 / max_value * plot_w) if item.value2 and item.value2 > 0 else 0 -%}
-    {%- set y2 = row_y + (row_h - bar_h * 2 - 4) / 2 + bar_h + 4 -%}
-    <rect class="bar bar--secondary" x="{{ label_w }}" y="{{ y2 }}" width="{{ bw2 }}" height="{{ bar_h }}" rx="2">
-      <title>{{ item.label }}{% if legend2 %} — {{ legend2 }}{% endif %}: {{ value_fmt(item.value2) }}</title>
-    </rect>
-    <text class="value-label" x="{{ label_w + bw2 + 6 }}" y="{{ y2 + bar_h - 2 }}">{{ value_fmt(item.value2) }}</text>
-    {% endif %}
-    {% endfor %}
-  </svg>
-  {% if has_second %}
-  <p class="legend">
-    <span><span class="legend__swatch legend__swatch--1"></span>{{ legend1 }}</span>
-    <span><span class="legend__swatch legend__swatch--2"></span>{{ legend2 }}</span>
-  </p>
-  {% endif %}
-</div>
+</figure>
 {% endmacro %}

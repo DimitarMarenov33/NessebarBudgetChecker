@@ -4,13 +4,15 @@ Builds the real site (from the real local DB) into a pytest tmp_path, then
 checks the output shape: required pages exist, the contracts CSV export has
 one row per distinct `eop` procurement, and -- since the site will be
 published under a GitHub Pages sub-path -- no link or asset reference is
-absolute (starts with "/").
+absolute (starts with "/"). The number-formatting filters are unit-tested
+without the database.
 """
 
 from __future__ import annotations
 
 import csv
 import re
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -18,13 +20,74 @@ from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import Session
 
 from nessebar_budget.db.models import Procurement
-from nessebar_budget.web.build import DEFAULT_DB_PATH, build_site
+from nessebar_budget.web.build import (
+    DEFAULT_DB_PATH,
+    _make_env,
+    build_site,
+    fmt_eur,
+    fmt_num,
+    fmt_pct,
+    severity_key,
+    site_path,
+)
 
-pytestmark = pytest.mark.skipif(
+requires_db = pytest.mark.skipif(
     not DEFAULT_DB_PATH.exists(), reason="data/nessebar.db not present"
 )
 
 HREF_SRC_RE = re.compile(r'(?:href|src)="(?P<url>[^"]*)"')
+
+
+# ---------------------------------------------------------------------------
+# Formatting filters (no database needed)
+# ---------------------------------------------------------------------------
+
+
+def test_num_filter_uses_comma_thousands_and_no_decimals() -> None:
+    assert fmt_num(12347905.4) == "12,347,905"
+    assert fmt_num(12347905.6) == "12,347,906"
+    assert fmt_num(999) == "999"
+    assert fmt_num(0) == "0"
+    assert fmt_num(-1234567) == "-1,234,567"
+    assert fmt_num(Decimal("1000000.49")) == "1,000,000"
+    assert fmt_num(None) == "—"
+
+
+def test_eur_filter_appends_euro_sign() -> None:
+    assert fmt_eur(12347905) == "12,347,905 €"
+    assert fmt_eur(Decimal("220000.00")) == "220,000 €"
+    assert fmt_eur(0.4) == "0 €"
+    assert fmt_eur(None) == "—"
+
+
+def test_pct_filter_uses_dot_decimal() -> None:
+    assert fmt_pct(0.784) == "78.4%"
+    assert fmt_pct(1.0) == "100.0%"
+    assert fmt_pct(12.5) == "1,250.0%"
+    assert fmt_pct(-0.105) == "-10.5%"
+    assert fmt_pct(0.5, decimals=0) == "50%"
+    assert fmt_pct(None) == "—"
+
+
+def test_filters_are_registered_in_jinja_env() -> None:
+    env = _make_env()
+    tpl = env.from_string("{{ a | num }} | {{ a | eur }} | {{ b | pct }} | {{ s | sevkey }}")
+    assert tpl.render(a=12347905, b=0.784, s="critical") == "12,347,905 | 12,347,905 € | 78.4% | high"
+
+
+def test_severity_and_path_helpers() -> None:
+    assert severity_key("HIGH") == "high"
+    assert severity_key("serious") == "warning"
+    assert severity_key("good") == "info"
+    assert severity_key(None) == "warning"
+    assert site_path("../contracts/1.html") == "contracts/1.html"
+    assert site_path("flags/index.html") == "flags/index.html"
+    assert site_path(None) == ""
+
+
+# ---------------------------------------------------------------------------
+# Full build against the real database
+# ---------------------------------------------------------------------------
 
 
 @pytest.fixture(scope="module")
@@ -44,6 +107,7 @@ def _distinct_eop_contract_count() -> int:
         )
 
 
+@requires_db
 def test_required_pages_exist(built_site: Path) -> None:
     for rel in [
         "index.html",
@@ -66,6 +130,7 @@ def test_required_pages_exist(built_site: Path) -> None:
         assert (built_site / rel).exists(), f"missing {rel}"
 
 
+@requires_db
 def test_contracts_csv_row_count_matches_distinct_eop_contracts(built_site: Path) -> None:
     csv_path = built_site / "data" / "contracts.csv"
     with csv_path.open(encoding="utf-8") as f:
@@ -79,6 +144,7 @@ def test_contracts_csv_row_count_matches_distinct_eop_contracts(built_site: Path
     assert len(source_ids) == len(rows), "contracts.csv has duplicate source_id rows"
 
 
+@requires_db
 def test_no_absolute_links_or_assets(built_site: Path) -> None:
     offenders = []
     for html_path in built_site.rglob("*.html"):
@@ -90,6 +156,7 @@ def test_no_absolute_links_or_assets(built_site: Path) -> None:
     assert not offenders, f"absolute href/src found: {offenders[:10]}"
 
 
+@requires_db
 def test_build_is_idempotent(built_site: Path, tmp_path_factory) -> None:
     """Building twice into the same directory should succeed and produce the
     same set of files (no stale leftovers, no crash on re-run)."""
@@ -101,8 +168,47 @@ def test_build_is_idempotent(built_site: Path, tmp_path_factory) -> None:
     assert first == second
 
 
+@requires_db
 def test_flags_page_renders_without_flag_schema_columns(built_site: Path) -> None:
     """flags/index.html must render even though the live `flags` table may not
     yet have the newer optional columns (subject_type, law_ref, ...)."""
     html = (built_site / "flags" / "index.html").read_text(encoding="utf-8")
     assert "Сигнали" in html
+
+
+#: An amount grouped with spaces / thin spaces (the pre-redesign format),
+#: e.g. "220 000 €" -- every rendered number must use commas now.
+SPACE_GROUPED_RE = re.compile(r"\d[ \u2009\u202f\u00a0]\d{3}(?:\D|$)")
+
+
+@requires_db
+def test_rendered_amounts_use_comma_grouping(built_site: Path) -> None:
+    offenders = []
+    for rel in ["index.html", "contracts/index.html", "budget/index.html", "cash/index.html",
+                "contractors/index.html", "data/index.html", "methodology.html"]:
+        html = (built_site / rel).read_text(encoding="utf-8")
+        for match in re.finditer(r"[\d,]+ €", html):
+            if not re.fullmatch(r"\d{1,3}(?:,\d{3})* €", match.group(0)):
+                offenders.append((rel, match.group(0)))
+        if SPACE_GROUPED_RE.search(re.sub(r"<[^>]+>", "|", html)):
+            offenders.append((rel, SPACE_GROUPED_RE.search(re.sub(r"<[^>]+>", "|", html)).group(0)))
+    assert not offenders, f"badly grouped numbers: {offenders[:10]}"
+
+
+@requires_db
+def test_home_page_is_compact(built_site: Path) -> None:
+    html = (built_site / "index.html").read_text(encoding="utf-8")
+    assert html.count('class="issue"') <= 5
+    assert html.count('class="stat"') == 4
+    assert "Къде отиват парите" in html
+    assert "fonts.googleapis.com/css2?family=Inter" in html
+    assert 'href="static/style.css"' in html and 'src="static/app.js"' in html
+
+
+@requires_db
+def test_detail_and_period_pages_exist(built_site: Path) -> None:
+    assert any((built_site / "contracts").glob("*.html"))
+    assert len(list((built_site / "contracts").glob("*.html"))) > 1
+    assert len(list((built_site / "contractors").glob("*.html"))) > 1
+    periods = [p for p in (built_site / "budget").glob("*.html") if p.name != "index.html"]
+    assert periods, "no budget/<period>.html pages"

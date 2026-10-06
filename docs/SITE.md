@@ -33,7 +33,7 @@ For CI/CD (GitHub Actions building and deploying this to Pages), see
 
 | Page | Content |
 |---|---|
-| `index.html` | Headline numbers (contract count/value by year, latest capital-plan execution, cash YTD), latest flags, a short "how this works" explainer, footer timestamp. |
+| `index.html` | Deliberately short (~3–4 desktop screens): hero, a 4-tile stat strip (contracts total, capital plan spent vs. plan with progress bar, cash YTD, open flags by severity), max 5 latest flags (one per rule first), one "contracts by year" chart, a 3-column "how it works", footer. |
 | `contracts/index.html` | Every ЦАИС ЕОП procurement (signed + open), client-side sortable/searchable/filterable table, per-year value chart. |
 | `contracts/<source_id>.html` | One page per procurement: all fields, matched SIGMA enrichment (if any), source link, applicable flags. |
 | `contractors/index.html` | Contractors aggregated from signed contracts: count, total value, share of total, single-bidder share. |
@@ -106,14 +106,44 @@ templates render whatever is present (see `flags/index.html` and
 
 ## Design
 
-Mobile-first, deliberately plain: near-black text on off-white, one accent
-colour (used for links, the active nav underline, and chart bars), muted
-greys for secondary text, hairline table rules (no card boxes, no shadows,
-no gradients), system font stack, light/dark via `prefers-color-scheme`
-(see `static/style.css`'s custom properties). Charts are hand-written inline
-SVG bars in Jinja (`templates/_macros.html`'s `vbar_chart`/`hbar_chart`) —
-no Chart.js, no external request. EUR amounts use a thin-space thousands
-separator and no decimals (`fmt_eur` in `build.py`).
+Linear-inspired, dark by default (`prefers-color-scheme: light` swaps the
+same tokens for an off-white theme). Everything is driven by the custom
+properties at the top of `static/style.css`: near-black canvas (`#08090a`,
+surfaces `#0f1011`/`#141516`), primary text `#f7f8f8`, secondary `#8a8f98`,
+hairline borders `rgba(255,255,255,0.08)`, one indigo accent (`#5e6ad2`) used
+only for the primary button, progress bars, the latest chart bar and focus
+rings. Spacing scale 4/8/12/16/24/32/48/64/96/128; 8px radii; no shadows and
+no gradients except the faint radial glow behind the home hero. Severity is
+shown as a coloured dot + text (red/orange/grey), never a filled badge.
+
+Type is Inter (Google Fonts, `system-ui` fallback) with tight tracking on
+headlines; every number uses `font-variant-numeric: tabular-nums`.
+
+**Numbers.** All rendered numbers go through three Jinja filters defined in
+`build.py`: `num` (`12,347,905`), `eur` (`12,347,905 €`) and `pct` (a
+fraction: `0.784` → `78.4%`). English-style comma thousands separators, no
+decimals for amounts. CSV/JSON exports stay raw numeric. `sevkey`/`sevlabel`
+normalise any severity string to `high`/`warning`/`info`.
+
+**Layout.** `base.html` holds the sticky 56px nav (collapses to a
+horizontally scrollable link row on phones — no JS menu), and the footer.
+`_macros.html` holds the shared pieces: `page_head`, `figure` (big number
+with a smaller unit), `meter`, `chip`/`sev_chip`, `flag_row`, `search`, and
+`vbar_chart`. `_budget_body.html` is shared by `budget/index.html` and
+`budget/<period>.html`. Tables: hairline rows, right-aligned tabular
+numbers, header row sticky under the nav on ≥1000px; on phones the contracts
+and flags tables turn into stacked rows (`.table--stack`), the others scroll
+horizontally. Budget-by-function and cash-by-paragraph are tables with
+inline meters rather than a separate chart + duplicate table.
+
+**Charts** are hand-written inline SVG (no library, no external request).
+`vbar_chart` uses an SVG without a `viewBox`: x/width in percent so it fills
+any container, y/height in pixels so text never scales. Bars are muted,
+the latest year is the one accent bar, only the max and latest bars get a
+value label, every bar has a native `<title>` tooltip.
+
+`static/app.js` (sort/search/filter, plus `/` to focus search) is loaded on
+every page from `base.html`; tables remain fully readable with JS off.
 
 ## Not yet surfaced
 

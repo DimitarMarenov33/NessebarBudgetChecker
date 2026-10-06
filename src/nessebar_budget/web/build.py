@@ -42,6 +42,7 @@ TEMPLATES_DIR = WEB_DIR / "templates"
 STATIC_DIR = WEB_DIR / "static"
 DEFAULT_DB_PATH = PROJECT_ROOT / "data" / "nessebar.db"
 MINFIN_QUARTERLY_PATH = PROJECT_ROOT / "data" / "minfin" / "quarterly_Q2_2026.xlsx"
+REPO_URL = "https://github.com/DimitarMarenov33/NessebarBudgetChecker"
 
 #: EOP's own `contract.ProcedureType` field is an English enum for signed
 #: contracts; open procedures (no contract yet) carry a Bulgarian label
@@ -78,15 +79,6 @@ _NAIVE_MIN = dt.datetime.min  # noqa: DTZ901
 # --------------------------------------------------------------------------
 
 
-def _truncate(label: str | None, max_len: int = 30) -> str:
-    if not label:
-        return ""
-    label = label.strip()
-    if len(label) <= max_len:
-        return label
-    return label[: max_len - 1].rstrip() + "…"
-
-
 def _as_float(value: Any) -> float | None:
     if value is None:
         return None
@@ -95,22 +87,20 @@ def _as_float(value: Any) -> float | None:
     return float(value)
 
 
-def fmt_eur(value: Any) -> str:
-    """Thin-space-grouped EUR amount, no decimals (e.g. '220 000 €')."""
-    f = _as_float(value)
-    if f is None:
-        return "—"
-    n = round(f)
-    return f"{n:,}".replace(",", " ") + " €"
-
-
 def fmt_num(value: Any) -> str:
-    """Thin-space-grouped plain integer, no currency."""
+    """Comma-grouped integer, no decimals (12347905.4 -> '12,347,905')."""
     f = _as_float(value)
     if f is None:
         return "—"
-    n = round(f)
-    return f"{n:,}".replace(",", " ")
+    return f"{round(f):,}"
+
+
+def fmt_eur(value: Any) -> str:
+    """Comma-grouped EUR amount, no decimals (e.g. '12,347,905 €')."""
+    f = _as_float(value)
+    if f is None:
+        return "—"
+    return f"{round(f):,} €"
 
 
 def fmt_pct(value: Any, decimals: int = 1) -> str:
@@ -118,7 +108,37 @@ def fmt_pct(value: Any, decimals: int = 1) -> str:
     f = _as_float(value)
     if f is None:
         return "—"
-    return f"{f * 100:.{decimals}f}%".replace(".", ",")
+    return f"{f * 100:,.{decimals}f}%"
+
+
+#: Canonical severity buckets. The rules engine emits `info` / `warning` /
+#: `high`; older/other vocabularies (critical, serious, ...) fold into these
+#: three so the UI (chips, filters, counts) only ever deals with one scale.
+SEVERITY_ORDER = ("high", "warning", "info")
+SEVERITY_LABELS = {"high": "Висока", "warning": "Средна", "info": "Ниска"}
+_SEVERITY_ALIASES = {
+    "critical": "high", "high": "high",
+    "serious": "warning", "medium": "warning", "warning": "warning",
+    "info": "info", "good": "info", "ok": "info", "low": "info",
+}
+
+
+def severity_key(severity: str | None) -> str:
+    """Map any severity string onto one of SEVERITY_ORDER (default: warning)."""
+    return _SEVERITY_ALIASES.get((severity or "").strip().lower(), "warning")
+
+
+def severity_label(severity: str | None) -> str:
+    return SEVERITY_LABELS[severity_key(severity)]
+
+
+def site_path(href: str | None) -> str:
+    """Strip a leading '../' from a subject href built relative to a
+    first-level page (e.g. '../contracts/1.html' -> 'contracts/1.html'), so
+    templates can re-root it with `{{ root }}` from any depth."""
+    if not href:
+        return ""
+    return href.removeprefix("../")
 
 
 def fmt_date(value: Any) -> str:
@@ -545,7 +565,7 @@ def _function_chart_items(period_data: dict[str, Any] | None) -> list[dict[str, 
     if not period_data:
         return []
     return [
-        {"label": _truncate(f["name"], 26), "value": f["plan_current"], "value2": f["spent_period"]}
+        {"label": f["name"], "value": f["plan_current"], "value2": f["spent_period"]}
         for f in period_data["function_totals"]
     ]
 
@@ -799,9 +819,16 @@ def _make_env() -> Environment:
     env.filters["bgdate"] = fmt_date
     env.filters["period"] = fmt_period
     env.filters["quarter"] = fmt_quarter
+    env.filters["sevkey"] = severity_key
+    env.filters["sevlabel"] = severity_label
+    env.filters["sitepath"] = site_path
     env.globals["fmt_eur"] = fmt_eur
     env.globals["fmt_num"] = fmt_num
     env.globals["fmt_pct"] = fmt_pct
+    env.globals["severity_order"] = SEVERITY_ORDER
+    env.globals["severity_labels"] = SEVERITY_LABELS
+    env.globals["repo_url"] = REPO_URL
+    env.globals["rule_labels"] = RULE_LABELS
     return env
 
 
@@ -969,7 +996,36 @@ def build_site(out_dir: Path, db_url: str | None = None) -> None:
     latest_budget = budget["by_period"].get(latest_budget_period) if latest_budget_period else None
     latest_cash_period = cash["periods"][-1] if cash["periods"] else None
     latest_cash = cash["by_period"].get(latest_cash_period) if latest_cash_period else None
-    latest_flags = sorted(flags, key=lambda f: f["created_at"] or _NAIVE_MIN, reverse=True)[:8]
+    severity_rank = {key: i for i, key in enumerate(SEVERITY_ORDER)}
+    # Newest first; flags from the same rules run share a timestamp, so the
+    # tie-break surfaces the most severe ones, then the most recent ids.
+    flags_ranked = sorted(
+        flags,
+        key=lambda f: (
+            -f["created_at"].timestamp() if f["created_at"] else float("inf"),
+            severity_rank[severity_key(f["severity"])],
+            -(f["id"] or 0),
+        ),
+    )
+    # The home page preview shows at most 5 rows: one per rule first (so it
+    # reads as a cross-section, not five copies of the same check), then
+    # fills any remaining slots in ranked order.
+    latest_flags: list[dict[str, Any]] = []
+    seen_rules: set[str] = set()
+    for f in flags_ranked:
+        if f["rule"] not in seen_rules:
+            seen_rules.add(f["rule"])
+            latest_flags.append(f)
+    latest_flags = latest_flags[:5]
+    for f in flags_ranked:
+        if len(latest_flags) >= 5:
+            break
+        if f not in latest_flags:
+            latest_flags.append(f)
+    latest_flags.sort(key=flags_ranked.index)
+    flag_severity_counts = {key: 0 for key in SEVERITY_ORDER}
+    for f in flags:
+        flag_severity_counts[severity_key(f["severity"])] += 1
 
     meta = {
         "generated_at": generated_at.isoformat(),
@@ -1007,6 +1063,9 @@ def build_site(out_dir: Path, db_url: str | None = None) -> None:
             "latest_cash": latest_cash,
             "latest_flags": latest_flags,
             "flags_total": len(flags),
+            "flag_severity_counts": flag_severity_counts,
+            "first_year": year_rows[0]["year"] if year_rows else None,
+            "last_year": year_rows[-1]["year"] if year_rows else None,
             "sigma_stats": sigma_stats,
         },
     )
@@ -1070,7 +1129,7 @@ def build_site(out_dir: Path, db_url: str | None = None) -> None:
     if latest_cash:
         top = latest_cash["expense_paragraphs"][:12]
         cash_chart_items = [
-            {"label": _truncate(r["name"], 26), "value": r["actual_ytd"]} for r in top
+            {"label": r["name"], "value": r["actual_ytd"]} for r in top
         ]
 
     _write(
@@ -1088,7 +1147,10 @@ def build_site(out_dir: Path, db_url: str | None = None) -> None:
     # -- flags ------------------------------------------------------
     _write(
         env, "flags_index.html", out_dir / "flags" / "index.html",
-        {**base_ctx, "root": "../", "active": "flags", "flags": flags},
+        {
+            **base_ctx, "root": "../", "active": "flags", "flags": flags,
+            "flag_severity_counts": flag_severity_counts,
+        },
     )
 
     # -- data ------------------------------------------------------
