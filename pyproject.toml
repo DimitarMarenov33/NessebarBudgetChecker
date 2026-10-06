@@ -1,0 +1,53 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "nessebar_budget"
+version = "0.1.0"
+description = "Local, offline civic budget-monitoring app for Nessebar Municipality"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+dependencies = [
+    "scrapling",
+    "playwright",
+    "httpx",
+    "beautifulsoup4",
+    "lxml",
+    "pdfplumber",
+    "pypdf",
+    "openpyxl",
+    "pandas",
+    "xlrd",
+    "sqlalchemy",
+    "pydantic",
+    "pydantic-settings",
+    "python-telegram-bot",
+    "fastapi",
+    "uvicorn[standard]",
+    "jinja2",
+    "apscheduler",
+    "rich",
+    "typer",
+    "python-dotenv",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "ruff",
+]
+
+[project.scripts]
+nessebar-budget = "nessebar_budget.cli:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/nessebar_budget"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

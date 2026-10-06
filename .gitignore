@@ -1,0 +1,16 @@
+.venv/
+!data/nessebar.db
+data/cache/
+.env
+__pycache__/
+*.pyc
+.ruff_cache
+.pytest_cache
+
+# raw scrape caches and bulky reference archives (rebuildable / downloaded manually)
+data/cache/
+data/minfin/*.zip
+data/minfin/maketi/
+data/minfin/*.html
+data/minfin/links.json
+site/
