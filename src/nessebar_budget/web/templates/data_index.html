@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Данни — Бюджетен монитор Несебър{% endblock %}
+{% block content %}
+<h1>Данни за сваляне</h1>
+<p class="lede">Суровите данни зад този сайт, в отворени формати (CSV/JSON), генерирани при
+последното обновяване ({{ generated_at_label }}). Свободни са за повторна употреба.</p>
+
+<ul class="export-list">
+  <li><a href="{{ root }}data/contracts.csv">contracts.csv<code>всички {{ meta.counts.contracts_eop_total }} записа от ЦАИС ЕОП, обогатени от СИГМА</code></a></li>
+  <li><a href="{{ root }}data/contracts.json">contracts.json<code>същото, в JSON</code></a></li>
+  <li><a href="{{ root }}data/budget_line_items.csv">budget_line_items.csv<code>пълният ред на капиталовата програма, всички месеци и звена</code></a></li>
+  <li><a href="{{ root }}data/cash_execution.csv">cash_execution.csv<code>касово изпълнение по параграфи, всички месеци</code></a></li>
+  <li><a href="{{ root }}data/flags.json">flags.json<code>{{ meta.counts.flags }} сигнал(а)</code></a></li>
+  <li><a href="{{ root }}data/meta.json">meta.json<code>метаданни за генерирането на сайта</code></a></li>
+</ul>
+
+<h2>Обобщение</h2>
+<dl class="kv-list">
+  <dt>Поръчки в ЦАИС ЕОП</dt>
+  <dd>{{ meta.counts.contracts_eop_total }} ({{ meta.counts.contracts_signed }} подписани, {{ meta.counts.contracts_open }} текущи)</dd>
+  <dt>Съпоставени със СИГМА</dt>
+  <dd>{{ meta.sigma_dedupe.matched }} от {{ meta.sigma_dedupe.eop_with_value_and_eik }} допустими договора</dd>
+  <dt>Изпълнители</dt>
+  <dd>{{ meta.counts.contractors }}</dd>
+  <dt>Месеци в капиталовата програма</dt>
+  <dd>{{ meta.counts.budget_periods | join(", ") }}</dd>
+  <dt>Месеци в касовото изпълнение</dt>
+  <dd>{{ meta.counts.cash_periods | join(", ") }}</dd>
+  <dt>Генерирано на</dt>
+  <dd>{{ meta.generated_at }}</dd>
+</dl>
+{% endblock %}

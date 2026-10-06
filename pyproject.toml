@@ -41,6 +41,7 @@ dev = [
 
 [project.scripts]
 nessebar-budget = "nessebar_budget.cli:app"
+nessebar = "nessebar_budget.cli:app"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/nessebar_budget"]

@@ -1,0 +1,95 @@
+name: Weekly data pipeline
+
+# Scrapes fresh data, re-parses/analyzes it, sends any pending Telegram
+# notifications, commits the updated SQLite DB under data/, then builds and
+# deploys the static site to GitHub Pages. Runs every Monday at 05:00 UTC,
+# or on demand via "Run workflow" above.
+on:
+  schedule:
+    - cron: "0 5 * * 1"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  # Only one weekly-pipeline run at a time: a second trigger (e.g. a manual
+  # dispatch while the Monday cron run is still scraping) queues instead of
+  # racing the same `data/nessebar.db` and cache directories.
+  group: nessebar-weekly-pipeline
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    # Guard against the bot's own "data: weekly update ..." commit somehow
+    # re-triggering this job (it can't, since this workflow only listens on
+    # schedule/workflow_dispatch, not push -- but this is cheap insurance,
+    # and matches the same guard used in pages.yml).
+    if: github.actor != 'github-actions[bot]'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run weekly pipeline (scrape, parse, analyze, notify)
+        # A failed step (e.g. one source temporarily down) must not block
+        # committing whatever data did update and republishing the site.
+        continue-on-error: true
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          SITE_BASE_URL: ${{ vars.SITE_BASE_URL || 'https://dimitarmarenov33.github.io/NessebarBudgetChecker' }}
+        run: python -m nessebar_budget.cli pipeline weekly
+
+      - name: Commit data changes
+        run: |
+          git config user.name "nessebar-bot"
+          git config user.email "actions@github.com"
+          git add data/nessebar.db
+          if git diff --cached --quiet; then
+            echo "No data changes to commit."
+          else
+            git commit -m "data: weekly update $(date -u +%Y-%m-%d) [skip ci]"
+            git push
+          fi
+
+      - name: Build static site
+        env:
+          SITE_BASE_URL: ${{ vars.SITE_BASE_URL || 'https://dimitarmarenov33.github.io/NessebarBudgetChecker' }}
+        run: python -m nessebar_budget.cli build-site --out site
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./site
+
+  deploy:
+    needs: update
+    runs-on: ubuntu-latest
+    concurrency:
+      # Shared with pages.yml's deploy job so two workflows never deploy to
+      # GitHub Pages at the same time.
+      group: pages
+      cancel-in-progress: true
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

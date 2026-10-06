@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Integer, Numeric, String, Text
+from sqlalchemy import JSON, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -73,9 +73,21 @@ class BudgetReport(Base):
 
 
 class Flag(Base):
-    """An analysis-rule finding, optionally attached to a Procurement."""
+    """An analysis-rule finding, optionally attached to a Procurement.
+
+    Rows are upserted by `analysis.engine.run_full_analysis`, keyed on
+    `(rule, subject_key)` (see `uq_flags_rule_subject_key` below): a subject
+    seen again updates `last_seen_at`/`details_json` in place, and a subject
+    a rule stops producing gets `resolved_at` set rather than being deleted.
+    `subject_key` is nullable to stay compatible with the older, minimal
+    `analysis.engine.run_rules` path (`pipeline.py`'s `_step_analyze`), which
+    does not set it.
+    """
 
     __tablename__ = "flags"
+    __table_args__ = (
+        UniqueConstraint("rule", "subject_key", name="uq_flags_rule_subject_key"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
 
@@ -87,7 +99,28 @@ class Flag(Base):
     severity: Mapped[str] = mapped_column(String(16))
     message: Mapped[str] = mapped_column(Text)
 
+    #: What real-world thing this flag is about: 'contract' | 'procedure' |
+    #: 'budget_object' | 'cash_paragraph' | 'report'.
+    subject_type: Mapped[str | None] = mapped_column(String(32), default=None)
+    #: The subject's natural identifier (e.g. "eop:266822", or a budget
+    #: object's paragraph+name).
+    subject_id: Mapped[str | None] = mapped_column(String(256), default=None)
+    #: The upsert key -- unique together with `rule` (see `__table_args__`).
+    #: Usually equal to `subject_id`; kept as a separate column in case a
+    #: rule ever needs a key distinct from the subject's plain identifier.
+    subject_key: Mapped[str | None] = mapped_column(String(256), default=None)
+    #: Rule-specific supporting numbers (dates, amounts, ratios, ...).
+    details_json: Mapped[dict | None] = mapped_column(JSON, default=None)
+    #: Citation of the legal article this flag is grounded in, if any.
+    law_ref: Mapped[str | None] = mapped_column(Text, default=None)
+
     created_at: Mapped[dt.datetime] = mapped_column(
         DateTime, default=lambda: dt.datetime.now(dt.UTC)
     )
+    #: When this subject was first flagged by this rule.
+    first_seen_at: Mapped[dt.datetime | None] = mapped_column(DateTime, default=None)
+    #: When this subject was last (re-)produced by this rule.
+    last_seen_at: Mapped[dt.datetime | None] = mapped_column(DateTime, default=None)
+    #: Set once the rule stops producing this subject; cleared again if it reappears.
+    resolved_at: Mapped[dt.datetime | None] = mapped_column(DateTime, default=None)
     notified_at: Mapped[dt.datetime | None] = mapped_column(DateTime, default=None)

@@ -32,6 +32,11 @@ class Settings(BaseSettings):
 
     data_dir: Path = Path("data")
 
+    #: Base URL the static site is published at; used to build flag deep
+    #: links in Telegram notifications (`{site_base_url}/flags/#<flag-id>`)
+    #: and by the site generator for absolute links/canonical URLs.
+    site_base_url: str = "https://dimitarmarenov33.github.io/NessebarBudgetChecker"
+
 
 def get_settings() -> Settings:
     """Return a freshly loaded Settings instance."""

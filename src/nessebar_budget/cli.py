@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import datetime as dt
 import logging
 from pathlib import Path
 
@@ -11,16 +12,17 @@ from rich.console import Console
 from rich.table import Table
 from sqlalchemy import select
 
-from nessebar_budget.analysis.engine import run_rules
+from nessebar_budget.analysis.engine import run_full_analysis
+from nessebar_budget.config import get_settings
 from nessebar_budget.db.budget_repo import (
     upsert_budget_line_items,
     upsert_budget_report,
     upsert_cash_execution_lines,
 )
-from nessebar_budget.db.models import BudgetReport, Flag, Procurement
+from nessebar_budget.db.models import BudgetReport, Flag
 from nessebar_budget.db.repo import upsert_procurements
 from nessebar_budget.db.session import get_session, init_db
-from nessebar_budget.notify.telegram import send_message
+from nessebar_budget.notify.telegram import send_flags_notification
 from nessebar_budget.parsers.budget_b1 import parse_budget_b1
 from nessebar_budget.parsers.budget_capital import parse_budget_capital
 from nessebar_budget.scrapers.eop import EopScraper
@@ -203,48 +205,103 @@ def parse_budget_command(
 
 @app.command("analyze")
 def analyze_command() -> None:
-    """Run analysis rules over stored procurements and persist resulting flags."""
+    """Run every anomaly rule (analysis.rules) over stored procurements and
+    the capital budget ledger, and upsert the resulting flags.
+
+    Flags are upserted on (rule, subject_key): a subject seen again is
+    updated in place; a subject a rule no longer produces is marked
+    resolved rather than deleted. Prints new/updated/resolved counts per
+    rule.
+    """
+    init_db()
     with get_session() as session:
-        procurements = session.scalars(select(Procurement)).all()
-        records = [
-            {
-                "id": p.id,
-                "source_id": p.source_id,
-                "contract_value_bgn": p.contract_value_bgn,
-            }
-            for p in procurements
-        ]
-        flags = list(run_rules(records))
-        for flag in flags:
-            session.add(flag)
+        summary = run_full_analysis(session)
         session.commit()
-        console.print(f"Generated {len(flags)} flag(s) from {len(records)} procurement(s).")
+
+    table = Table(title="analyze summary")
+    table.add_column("rule")
+    table.add_column("new", justify="right")
+    table.add_column("updated", justify="right")
+    table.add_column("resolved", justify="right")
+    for rule_name in sorted(summary.counts):
+        counts = summary.counts[rule_name]
+        table.add_row(rule_name, str(counts.new), str(counts.updated), str(counts.resolved))
+    console.print(table)
+    console.print(
+        f"Total: {summary.total_new()} new, {summary.total_updated()} updated, "
+        f"{summary.total_resolved()} resolved ({summary.flags_produced} flag(s) produced this run)."
+    )
 
 
 @app.command("notify-pending")
-def notify_pending_command() -> None:
-    """Send Telegram notifications for flags that haven't been notified yet."""
+def notify_pending_command(
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Print the grouped notification message instead of sending it to Telegram.",
+    ),
+) -> None:
+    """Send one grouped Telegram notification for flags not yet notified.
+
+    Bundles up to ~10 flags in full (severity emoji, message, deep link)
+    plus a per-severity summary of any remainder, in a single HTML message.
+    Marks every included flag's `notified_at` once actually sent. No-ops
+    with a logged warning if TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID are not
+    configured, unless `--dry-run` is given (which never requires them).
+    """
     with get_session() as session:
-        pending = session.scalars(select(Flag).where(Flag.notified_at.is_(None))).all()
+        pending = session.scalars(select(Flag).where(Flag.notified_at.is_(None), Flag.resolved_at.is_(None))).all()
         if not pending:
             console.print("No pending flags.")
             return
 
-        async def _send_all() -> None:
-            for flag in pending:
-                await send_message(f"[{flag.severity}] {flag.rule}: {flag.message}")
+        message = asyncio.run(send_flags_notification(pending, dry_run=dry_run))
 
-        asyncio.run(_send_all())
-        console.print(f"Attempted to notify {len(pending)} pending flag(s).")
+        if dry_run:
+            console.print(message)
+            console.print(
+                f"[yellow]--dry-run[/yellow]: {len(pending)} pending flag(s) not sent."
+            )
+            return
+
+        if message is None:
+            console.print(
+                "[yellow]Telegram not configured (TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID "
+                "missing); no notification sent.[/yellow]"
+            )
+            return
+
+        now = dt.datetime.now(dt.UTC).replace(tzinfo=None)
+        for flag in pending:
+            flag.notified_at = now
+        session.commit()
+        console.print(f"Notified {len(pending)} pending flag(s) in one grouped message.")
 
 
-@app.command("serve")
-def serve_command(host: str = "127.0.0.1", port: int = 8000) -> None:
-    """Run the local FastAPI web UI."""
-    import uvicorn
+_SITE_OUT_OPTION = typer.Option(Path("site"), "--out", help="Output directory for the static site.")
 
-    uvicorn.run("nessebar_budget.web.app:app", host=host, port=port)
 
+@app.command("build-site")
+def build_site_command(
+    out: Path = _SITE_OUT_OPTION,
+) -> None:
+    """Generate the static website (HTML, CSV/JSON exports) from the database."""
+    from nessebar_budget.web.build import build_site
+
+    build_site(out)
+    console.print(f"Site built in {out}/")
+
+
+@app.command("pipeline")
+def pipeline_command(
+    mode: str = typer.Argument("weekly", help="Only 'weekly' is supported for now."),
+) -> None:
+    """Run the full weekly pipeline: scrape, parse, analyze, notify, build site."""
+    from nessebar_budget.pipeline import run_weekly
+
+    if mode != "weekly":
+        raise typer.BadParameter("only 'weekly' is supported")
+    run_weekly(get_settings())
 
 if __name__ == "__main__":
     app()

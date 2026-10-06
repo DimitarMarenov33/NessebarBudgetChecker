@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block title %}Касово изпълнение — Бюджетен монитор Несебър{% endblock %}
+{% block content %}
+<h1>Касово изпълнение на бюджета</h1>
+<p class="lede">Отчет „Б1" — касово изпълнение по параграфи на единната бюджетна класификация,
+от началото на {{ latest_period[:4] if latest_period else "" }} година до {{ latest_period | period }}.
+Това са реално извършените разходи (плащания), а не план. Източник: месечните отчети на
+nesebar.bg/reports.html.</p>
+
+{% if not latest %}
+<p class="note">Няма заредени данни за касово изпълнение.</p>
+{% else %}
+
+<div class="stat-grid">
+  <div class="stat-tile">
+    <span class="stat-tile__label">Всичко разходи от началото на годината</span>
+    <span class="stat-tile__value">{{ latest.expense_total | eur }}</span>
+    <span class="stat-tile__note">към {{ latest_period | period }}</span>
+  </div>
+  <div class="stat-tile">
+    <span class="stat-tile__label">Всичко приходи от началото на годината</span>
+    <span class="stat-tile__value">{{ latest.income_total | eur }}</span>
+  </div>
+</div>
+<p class="explainer">Разходите и приходите не са длъжни да се балансират в рамките на годината —
+разликата се покрива от преходен остатък, заеми и други източници на финансиране, които не са част
+от тази таблица.</p>
+
+<h2>Най-големи категории разходи</h2>
+<p class="explainer">Касови разходи по §-параграф от началото на годината (топ 12).</p>
+{{ m.hbar_chart(cash_chart_items, fmt_eur) }}
+
+<div class="table-wrap">
+<table>
+<thead><tr><th>Параграф</th><th>Наименование</th><th class="num">Разход от началото на годината</th></tr></thead>
+<tbody>
+{% for r in latest.expense_paragraphs %}
+<tr>
+<td>{{ r.paragraph }}</td>
+<td>{{ r.name }}</td>
+<td class="num">{{ r.actual_ytd | eur }}</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+
+{% if minfin %}
+<h2>Несебър спрямо другите общини</h2>
+<p class="explainer">Финансови показатели на общините, публикувани от Министерството на
+финансите (тримесечни „макети"), последно тримесечие: {{ minfin[0].period_label }}.</p>
+<div class="table-wrap">
+<table>
+<thead><tr><th>Показател</th><th class="num">Несебър</th><th class="num">Медиана за всички общини</th><th class="num">Общини в извадката</th></tr></thead>
+<tbody>
+{% for row in minfin %}
+<tr>
+<td>{{ row.title }}</td>
+<td class="num">{{ row.nessebar | pct }}</td>
+<td class="num">{{ row.median | pct }}</td>
+<td class="num">{{ row.n_municipalities }}</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+<p class="explainer">Показателите са дялове спрямо съответната база (напр. приходи или разходи) и
+са изразени като проценти. Виж <a href="{{ root }}methodology.html">методологията</a> за
+определенията.</p>
+{% endif %}
+{% endif %}
+{% endblock %}

@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Изпълнители — Бюджетен монитор Несебър{% endblock %}
+{% block content %}
+<h1>Изпълнители</h1>
+<p class="lede">{{ contractors | length | num }} фирми/изпълнители със сключени договори с Община
+Несебър, подредени по обща стойност. „Дял от едноличен участник" показва каква част от договорите
+на изпълнителя са възложени при само един подал оферта участник (от договорите, за които този факт
+е известен от СИГМА) — висок дял не е сам по себе си нарушение, но заслужава поглед.</p>
+
+<div data-table-container>
+  <div class="toolbar">
+    <label>
+      <span class="note">Търсене</span><br>
+      <input type="search" data-table-search placeholder="име или ЕИК…" aria-label="Търсене в таблицата">
+    </label>
+  </div>
+  <p class="note">Показани: <span data-table-count>{{ contractors | length }}</span> от {{ contractors | length }}</p>
+  <div class="table-wrap">
+  <table data-sortable data-filterable>
+    <thead>
+      <tr>
+        <th data-sort="none">Изпълнител</th>
+        <th data-sort="none" class="num">Брой договори</th>
+        <th data-sort="none" class="num">Обща стойност (EUR)</th>
+        <th data-sort="none" class="num">Дял от общо</th>
+        <th data-sort="none" class="num">Дял от едноличен участник</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for co in contractors %}
+      <tr>
+        <td><a href="{{ root }}contractors/{{ co.slug }}.html">{{ co.name }}</a> <span class="note">ЕИК {{ co.eik_display }}</span></td>
+        <td class="num" data-sort-value="{{ co.contract_count }}">{{ co.contract_count }}</td>
+        <td class="num" data-sort-value="{{ co.total_value_eur }}">{{ co.total_value_eur | eur }}</td>
+        <td class="num" data-sort-value="{{ co.share_of_total }}">{{ co.share_of_total | pct }}</td>
+        <td class="num" data-sort-value="{{ co.single_bidder_share if co.single_bidder_share is not none else -1 }}">
+          {{ co.single_bidder_share | pct if co.single_bidder_share is not none else "няма данни" }}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,97 @@
+{% macro stat_tile(label, value, note="") %}
+<div class="stat-tile">
+  <span class="stat-tile__label">{{ label }}</span>
+  <span class="stat-tile__value">{{ value }}</span>
+  {% if note %}<span class="stat-tile__note">{{ note }}</span>{% endif %}
+</div>
+{% endmacro %}
+
+{% macro severity_badge(severity) %}
+{%- set sev = (severity or 'warning') | lower -%}
+{%- if sev in ('critical', 'high') -%}
+<span class="badge badge--critical">критично</span>
+{%- elif sev in ('serious', 'medium') -%}
+<span class="badge badge--serious">сериозно</span>
+{%- elif sev in ('good', 'info', 'ok') -%}
+<span class="badge badge--good">информативно</span>
+{%- else -%}
+<span class="badge badge--warning">за проверка</span>
+{%- endif -%}
+{% endmacro %}
+
+{# Flat single-series vertical bar chart. items: list of {label, value}.
+   Per the "label selectively" rule, only the tallest bar and the most
+   recent one get a direct value label -- every bar still carries the exact
+   value as a native hover tooltip (<title>), and the full figures are
+   always in the accompanying data table/export. #}
+{% macro vbar_chart(items, value_fmt, height=200, bar_width=34, gap=22) %}
+{%- set max_value = (items | map(attribute='value') | max) if items else 1 -%}
+{%- if max_value <= 0 -%}{%- set max_value = 1 -%}{%- endif -%}
+{%- set width = (items | length) * (bar_width + gap) + gap -%}
+{%- set label_h = 20 -%}
+{%- set value_h = 16 -%}
+{%- set plot_h = height - label_h - value_h -%}
+<div class="chart">
+  <svg viewBox="0 0 {{ width }} {{ height }}" role="img" aria-label="Диаграма">
+    <line class="baseline" x1="0" y1="{{ value_h + plot_h }}" x2="{{ width }}" y2="{{ value_h + plot_h }}"></line>
+    {% for item in items %}
+    {%- set bar_h = (item.value / max_value * plot_h) if item.value > 0 else 0 -%}
+    {%- set x = gap + loop.index0 * (bar_width + gap) -%}
+    {%- set y = value_h + plot_h - bar_h -%}
+    {%- set show_label = (item.value == max_value) or loop.last -%}
+    {% if show_label %}
+    <text class="value-label" x="{{ x + bar_width / 2 }}" y="{{ y - 6 }}" text-anchor="middle">{{ value_fmt(item.value) }}</text>
+    {% endif %}
+    <rect class="bar" x="{{ x }}" y="{{ y }}" width="{{ bar_width }}" height="{{ bar_h }}" rx="2">
+      <title>{{ item.label }}: {{ value_fmt(item.value) }}</title>
+    </rect>
+    <text class="cat-label" x="{{ x + bar_width / 2 }}" y="{{ height - 4 }}" text-anchor="middle">{{ item.label }}</text>
+    {% endfor %}
+  </svg>
+</div>
+{% endmacro %}
+
+{# Flat horizontal bar chart, one or two series. items: list of
+   {label, value, value2 (optional)}. #}
+{% macro hbar_chart(items, value_fmt, legend1="", legend2="", row_h=26, label_w=215) %}
+{%- set values = [] -%}
+{%- for item in items -%}
+  {%- set _ = values.append(item.value) -%}
+  {%- if item.value2 is defined and item.value2 is not none -%}{%- set _ = values.append(item.value2) -%}{%- endif -%}
+{%- endfor -%}
+{%- set max_value = (values | max) if values else 1 -%}
+{%- if max_value <= 0 -%}{%- set max_value = 1 -%}{%- endif -%}
+{%- set has_second = items and (items[0].value2 is defined and items[0].value2 is not none) -%}
+{%- set bar_h = 10 if has_second else 14 -%}
+{%- set row_h = (row_h + 12) if has_second else row_h -%}
+{%- set width = label_w + 450 -%}
+{%- set plot_w = width - label_w - 80 -%}
+{%- set height = (items | length) * row_h + 8 -%}
+<div class="chart">
+  <svg viewBox="0 0 {{ width }} {{ height }}" role="img" aria-label="Диаграма">
+    {% for item in items %}
+    {%- set row_y = loop.index0 * row_h -%}
+    {%- set bw1 = (item.value / max_value * plot_w) if item.value > 0 else 0 -%}
+    <text class="cat-label" x="0" y="{{ row_y + row_h / 2 + 4 }}">{{ item.label }}</text>
+    <rect class="bar" x="{{ label_w }}" y="{{ row_y + (row_h - bar_h * (2 if has_second else 1) - (4 if has_second else 0)) / 2 }}" width="{{ bw1 }}" height="{{ bar_h }}" rx="2">
+      <title>{{ item.label }}{% if legend1 %} — {{ legend1 }}{% endif %}: {{ value_fmt(item.value) }}</title>
+    </rect>
+    <text class="value-label" x="{{ label_w + bw1 + 6 }}" y="{{ row_y + (row_h - bar_h * (2 if has_second else 1) - (4 if has_second else 0)) / 2 + bar_h - 2 }}">{{ value_fmt(item.value) }}</text>
+    {% if has_second %}
+    {%- set bw2 = (item.value2 / max_value * plot_w) if item.value2 and item.value2 > 0 else 0 -%}
+    {%- set y2 = row_y + (row_h - bar_h * 2 - 4) / 2 + bar_h + 4 -%}
+    <rect class="bar bar--secondary" x="{{ label_w }}" y="{{ y2 }}" width="{{ bw2 }}" height="{{ bar_h }}" rx="2">
+      <title>{{ item.label }}{% if legend2 %} — {{ legend2 }}{% endif %}: {{ value_fmt(item.value2) }}</title>
+    </rect>
+    <text class="value-label" x="{{ label_w + bw2 + 6 }}" y="{{ y2 + bar_h - 2 }}">{{ value_fmt(item.value2) }}</text>
+    {% endif %}
+    {% endfor %}
+  </svg>
+  {% if has_second %}
+  <p class="legend">
+    <span><span class="legend__swatch legend__swatch--1"></span>{{ legend1 }}</span>
+    <span><span class="legend__swatch legend__swatch--2"></span>{{ legend2 }}</span>
+  </p>
+  {% endif %}
+</div>
+{% endmacro %}

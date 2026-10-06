@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Бюджетен монитор Несебър{% endblock %}</title>
+<meta name="description" content="{% block description %}Граждански мониторинг на обществените поръчки и бюджета на Община Несебър.{% endblock %}">
+<link rel="stylesheet" href="{{ root }}static/style.css">
+</head>
+<body>
+<a class="skip-link" href="#main">Към съдържанието</a>
+<header class="site-header">
+  <div class="site-header__inner">
+    <a class="site-title" href="{{ root }}index.html">
+      Бюджетен монитор Несебър
+      <small>Община Несебър · граждански проект</small>
+    </a>
+    <nav aria-label="Основна навигация">
+      <ul class="site-nav">
+        <li><a href="{{ root }}index.html" {% if active == 'home' %}aria-current="page"{% endif %}>Начало</a></li>
+        <li><a href="{{ root }}contracts/index.html" {% if active == 'contracts' %}aria-current="page"{% endif %}>Поръчки</a></li>
+        <li><a href="{{ root }}contractors/index.html" {% if active == 'contractors' %}aria-current="page"{% endif %}>Изпълнители</a></li>
+        <li><a href="{{ root }}budget/index.html" {% if active == 'budget' %}aria-current="page"{% endif %}>Бюджет</a></li>
+        <li><a href="{{ root }}cash/index.html" {% if active == 'cash' %}aria-current="page"{% endif %}>Касово изпълнение</a></li>
+        <li><a href="{{ root }}flags/index.html" {% if active == 'flags' %}aria-current="page"{% endif %}>Сигнали</a></li>
+        <li><a href="{{ root }}data/index.html" {% if active == 'data' %}aria-current="page"{% endif %}>Данни</a></li>
+        <li><a href="{{ root }}methodology.html" {% if active == 'methodology' %}aria-current="page"{% endif %}>Методология</a></li>
+      </ul>
+    </nav>
+  </div>
+</header>
+<main id="main">
+{% block content %}{% endblock %}
+</main>
+<footer class="site-footer">
+  <p>Последно обновено: {{ generated_at_label }}. Данните идват от ЦАИС ЕОП (app.eop.bg), СИГМА
+  (sigma.midt.bg), месечните отчети за изпълнение на бюджета на nesebar.bg и Министерството на
+  финансите. Това е независим граждански проект, не е официален сайт на Община Несебър — виж
+  <a href="{{ root }}methodology.html">методологията</a>.</p>
+</footer>
+{% block scripts %}{% endblock %}
+</body>
+</html>

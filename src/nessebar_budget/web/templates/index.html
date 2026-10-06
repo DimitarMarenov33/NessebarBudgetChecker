@@ -1,11 +1,89 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="utf-8">
-    <title>Nessebar Budget Monitor</title>
-</head>
-<body>
-    <h1>Nessebar Budget Monitor</h1>
-    <p>Local civic budget-monitoring dashboard. See <code>/api/flags</code> for raw flag data.</p>
-</body>
-</html>
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block title %}Бюджетен монитор Несебър — начало{% endblock %}
+{% block content %}
+<h1>Бюджетен монитор Несебър</h1>
+<p class="lede">Независим граждански проект, който събира публични данни за обществените поръчки
+и бюджета на Община Несебър на едно място — на прост, разбираем български, с линк към
+първоизточника при всяко число.</p>
+
+<div class="stat-grid">
+  {{ m.stat_tile("Обществени поръчки в ЦАИС ЕОП", contracts_count | num, signed_count | string ~ " подписани договора, " ~ open_count | string ~ " текущи процедури") }}
+  {{ m.stat_tile("Обща стойност на подписаните договори", total_signed_value | eur, "сума на всички подписани договори от 2020 г. насам") }}
+  {% if latest_budget %}
+  {{ m.stat_tile(
+      "Капиталова програма — " ~ (latest_budget_period | period),
+      (latest_budget.grand_total.spent_period | eur),
+      "от план " ~ (latest_budget.grand_total.plan_current | eur) ~ " за тази година — "
+      ~ (latest_budget.grand_total.pct_executed | pct) ~ " изпълнение"
+  ) }}
+  {% endif %}
+  {% if latest_cash %}
+  {{ m.stat_tile("Касови разходи от началото на " ~ (latest_cash_period[:4]), latest_cash.expense_total | eur, "към " ~ (latest_cash_period | period) ~ ", по отчет Б1 на Община Несебър") }}
+  {% endif %}
+</div>
+
+<section>
+<h2>Как работи</h2>
+<p class="lede">Сайтът не публикува собствени данни — той препубликува и обяснява данни, които
+Община Несебър и държавните институции вече са длъжни да оповестяват публично. Всяко число води
+към източника си:</p>
+<dl class="kv-list">
+  <dt>Поръчки и договори</dt>
+  <dd>от <strong>ЦАИС ЕОП</strong> (app.eop.bg) — централната платформа за обществени поръчки —
+  обогатени с брой подадени оферти от <strong>СИГМА</strong> (sigma.midt.bg), платформа за
+  прозрачност на АОП. Виж <a href="{{ root }}methodology.html#dedupe">как се свързват двата
+  източника</a>.</dd>
+  <dt>Капиталова програма</dt>
+  <dd>от месечните отчети за изпълнение на бюджета, публикувани на nesebar.bg/reports.html.</dd>
+  <dt>Касово изпълнение</dt>
+  <dd>от месечния отчет „Б1" (касово изпълнение по параграфи), също от nesebar.bg.</dd>
+  <dt>Сигнали</dt>
+  <dd>автоматични проверки за несъответствия (напр. липсваща стойност на договор) — виж
+  <a href="{{ root }}methodology.html">методологията</a> за пълния списък от правила.</dd>
+</dl>
+<p class="explainer">Сайтът се генерира статично от локална база данни; няма сървър, няма
+проследяване, няма реклами.</p>
+</section>
+
+{% if latest_flags %}
+<section>
+<h2>Последни сигнали</h2>
+<p class="lede">{{ flags_total }} сигнал(а) общо. Сигналите са <strong>автоматично откроени
+несъответствия</strong>, не доказателство за нарушение — всеки изисква проверка на контекста.</p>
+<div class="table-wrap">
+<table>
+<thead><tr><th>Дата</th><th>Тежест</th><th>Съобщение</th></tr></thead>
+<tbody>
+{% for f in latest_flags %}
+<tr>
+<td>{{ f.created_at | bgdate }}</td>
+<td>{{ m.severity_badge(f.severity) }}</td>
+<td>{{ f.message }}{% if f.subject_href %} — <a href="{{ root }}flags/index.html">виж в сигналите</a>{% endif %}</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+<p><a href="{{ root }}flags/index.html">Всички сигнали →</a></p>
+</section>
+{% else %}
+<section>
+<h2>Сигнали</h2>
+<p class="lede">Все още няма регистрирани сигнали в базата данни. Правилата за автоматична
+проверка се разработват — виж <a href="{{ root }}methodology.html">методологията</a>.</p>
+</section>
+{% endif %}
+
+<section>
+<h2>Договори по години</h2>
+<p class="explainer">Обща стойност на подписаните договори за всяка година (по дата на
+договора), извлечени от ЦАИС ЕОП.</p>
+{% if year_chart_items %}
+{{ m.vbar_chart(year_chart_items, fmt_eur) }}
+{% else %}
+<p class="note">Няма достатъчно данни за диаграма.</p>
+{% endif %}
+<p><a href="{{ root }}contracts/index.html">Всички поръчки и договори →</a></p>
+</section>
+{% endblock %}

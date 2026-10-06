@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block title %}{{ c.title or c.source_id }} — Бюджетен монитор Несебър{% endblock %}
+{% block content %}
+<p class="breadcrumbs"><a href="{{ root }}contracts/index.html">← Всички поръчки</a></p>
+<h1>{{ c.title or '(без заглавие)' }}</h1>
+<p class="lede">
+{% if c.is_signed %}Подписан договор{% else %}Текуща процедура (все още няма сключен договор){% endif %}
+· Номер в ЦАИС ЕОП: {{ c.source_id }}
+</p>
+
+<dl class="kv-list">
+  <dt>Изпълнител</dt>
+  <dd>
+    {{ c.contractor_name or '—' }}
+    {% if c.contractor_slug %}
+      {% if c.contractor_eik and c.contractor_eik != "не се публикува" %}
+        (ЕИК <a href="{{ root }}contractors/{{ c.contractor_slug }}.html">{{ c.contractor_eik }}</a>)
+      {% else %}
+        (<a href="{{ root }}contractors/{{ c.contractor_slug }}.html">профил на изпълнителя</a>, ЕИК не е публикуван)
+      {% endif %}
+    {% endif %}
+  </dd>
+
+  <dt>{{ c.value_label | capitalize }}</dt>
+  <dd>{{ c.display_value_eur | eur }}</dd>
+
+  {% if c.is_signed and c.estimated_value_eur is not none %}
+  <dt>Прогнозна стойност (преди възлагане)</dt>
+  <dd>{{ c.estimated_value_eur | eur }}</dd>
+  {% endif %}
+
+  <dt>Процедура</dt>
+  <dd>{{ c.procedure_type or '—' }}</dd>
+
+  <dt>CPV код</dt>
+  <dd>{{ c.cpv_code or '—' }}</dd>
+
+  <dt>Дата на публикуване</dt>
+  <dd>{{ c.published_at | bgdate }}</dd>
+
+  {% if c.is_signed %}
+  <dt>Дата на договора</dt>
+  <dd>{{ c.contract_date | bgdate }}</dd>
+  {% endif %}
+
+  <dt>Брой подадени оферти</dt>
+  <dd>
+    {% if c.bids_received is not none %}
+      {{ c.bids_received }}{% if c.bids_received == 1 %} <span class="badge badge--warning">един участник</span>{% endif %}
+    {% else %}
+      няма данни
+    {% endif %}
+  </dd>
+
+  <dt>Източник</dt>
+  <dd><a href="{{ c.url }}" rel="noopener">{{ c.url }} ↗</a></dd>
+</dl>
+
+{% if c.sigma_source_id %}
+<section>
+<h2>Данни от СИГМА</h2>
+<p class="explainer">Този запис е съпоставен с номер <code>{{ c.sigma_source_id }}</code> в СИГМА
+(sigma.midt.bg) по изпълнител, стойност (±1%) и дата на договора (±3 дни) — виж
+<a href="{{ root }}methodology.html#dedupe">методологията на съпоставяне</a>.</p>
+<dl class="kv-list">
+  {% if c.sigma_unp %}<dt>Уникален номер на поръчката (УНП)</dt><dd>{{ c.sigma_unp }}</dd>{% endif %}
+  {% if c.sigma_procedure_type %}<dt>Тип процедура (по СИГМА)</dt><dd>{{ c.sigma_procedure_type }}</dd>{% endif %}
+  {% if c.sigma_sector_code is not none %}<dt>Код на сектор</dt><dd>{{ c.sigma_sector_code }}</dd>{% endif %}
+  <dt>Финансиране от ЕС</dt><dd>{{ "да" if c.sigma_eu_funded else "не" if c.sigma_eu_funded is not none else "няма данни" }}</dd>
+</dl>
+</section>
+{% endif %}
+
+<section>
+<h2>Сигнали по тази поръчка</h2>
+{% if c.flags %}
+<ul>
+{% for f in c.flags %}
+<li>{{ m.severity_badge(f.severity) }} {{ f.message }}{% if f.rule %} <span class="note">({{ f.rule_label }})</span>{% endif %}</li>
+{% endfor %}
+</ul>
+{% else %}
+<p class="note">Няма регистрирани сигнали по тази поръчка.</p>
+{% endif %}
+<p><a href="{{ root }}flags/index.html">Всички сигнали →</a></p>
+</section>
+{% endblock %}

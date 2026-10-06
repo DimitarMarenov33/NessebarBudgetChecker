@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block title %}Бюджет {{ period | period }} — Бюджетен монитор Несебър{% endblock %}
+{% block content %}
+<p class="breadcrumbs"><a href="{{ root }}budget/index.html">← Капиталова програма</a></p>
+<h1>Капиталова програма — {{ period | period }}</h1>
+
+<div class="pill-nav" aria-label="Избор на месец">
+{% for p in periods %}
+<a href="{{ root }}budget/{{ p }}.html" {% if p == period %}aria-current="page"{% endif %}>{{ p | period }}</a>
+{% endfor %}
+</div>
+
+<div class="stat-grid">
+  <div class="stat-tile">
+    <span class="stat-tile__label">План за {{ period[:4] }} г.</span>
+    <span class="stat-tile__value">{{ data.grand_total.plan_current | eur }}</span>
+  </div>
+  <div class="stat-tile">
+    <span class="stat-tile__label">Изразходвано към {{ period | period }}</span>
+    <span class="stat-tile__value">{{ data.grand_total.spent_period | eur }}</span>
+    <span class="stat-tile__note">{{ data.grand_total.pct_executed | pct }} изпълнение</span>
+  </div>
+</div>
+
+<h2>По функции</h2>
+{{ m.hbar_chart(function_chart_items, fmt_eur, "план за годината", "похарчено") }}
+
+<h2>Промени спрямо {{ changes.previous | period }}</h2>
+{% if changes.added %}
+<h3>Нови обекти ({{ changes.added | length }})</h3>
+<ul>
+{% for o in changes.added %}
+<li>{{ o.object_name }} <span class="note">({{ o.function_name }})</span> — план {{ o.plan_current | eur }}</li>
+{% endfor %}
+</ul>
+{% else %}
+<p class="note">Няма нови обекти спрямо предходния месец.</p>
+{% endif %}
+{% if changes.increased %}
+<h3>Увеличен план ({{ changes.increased | length }})</h3>
+<ul>
+{% for o in changes.increased %}
+<li>{{ o.object_name }} <span class="note">({{ o.function_name }})</span> — от {{ o.previous_plan | eur }} на {{ o.plan_current | eur }} (+{{ o.delta | eur }})</li>
+{% endfor %}
+</ul>
+{% else %}
+<p class="note">Няма обекти с увеличен план спрямо предходния месец.</p>
+{% endif %}
+
+<h2>Всички обекти ({{ data.object_count }})</h2>
+<div class="table-wrap">
+<table>
+  <thead>
+    <tr><th>Функция</th><th>Обект</th><th class="num">Обща стойност</th><th class="num">План</th><th class="num">Похарчено</th><th class="num">% изп.</th></tr>
+  </thead>
+  <tbody>
+  {% for o in data.objects %}
+  <tr>
+    <td>{{ o.function_name }}</td>
+    <td>{{ o.object_name }}</td>
+    <td class="num">{{ o.estimated_total | eur }}</td>
+    <td class="num">{{ o.plan_current | eur }}</td>
+    <td class="num">{{ o.spent_period | eur }}</td>
+    <td class="num">{{ o.pct_executed | pct if o.pct_executed is not none else "—" }}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}
