@@ -85,16 +85,16 @@
   <section class="block">
     <h2 class="block__title">Сигнали по тази поръчка</h2>
     {% if c.flags %}
-    <ul class="issues issues--static">
+    <ul class="issues">
       {% for f in c.flags %}
       <li>
-        <div class="issue">
+        <a class="issue" href="{{ root ~ (f.permalink_href | sitepath) }}">
           <span class="issue__sev">{{ m.sev_dot(f.severity) }}</span>
-          <span class="issue__rule"><span class="chip">{{ rule_labels.get(f.rule, f.rule) }}</span></span>
+          <span class="issue__rule"><span class="issue__chips">{{ m.chip(f.tier_label, f.tier_key) }}<span class="chip">{{ f.rule_label }}</span></span></span>
           <span class="issue__msg issue__msg--full">{{ f.message }}{% if f.law_ref %} <span class="muted">({{ f.law_ref }})</span>{% endif %}</span>
           <time class="issue__date">{{ f.created_at | bgdate }}</time>
-          <span class="issue__chev"></span>
-        </div>
+          <span class="issue__chev">{{ m.chevron() }}</span>
+        </a>
       </li>
       {% endfor %}
     </ul>

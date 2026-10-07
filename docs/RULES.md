@@ -1,150 +1,402 @@
 # Anomaly rules
 
 This document explains what `nessebar-budget analyze` checks, why, and what
-each flag means for a citizen reading it on the site. The rules live in
-`src/nessebar_budget/analysis/rules.py`, thresholds (all overridable via
-`RULES_*` env vars) in `analysis/thresholds.py`, the budget-object/contract
-text matcher in `analysis/matching.py`, and the upsert/resolve bookkeeping in
-`analysis/engine.py`.
+each flag means for a citizen reading it on the site. The rules live in the
+`src/nessebar_budget/analysis/rules/` package (`contracts.py`,
+`competition.py`, `quantity.py`, `budget.py`, `reports.py`, `meta.py`, plus
+`linking.py` for EOP/SIGMA cross-referencing; every public name is
+re-exported from `nessebar_budget.analysis.rules`), thresholds (all
+overridable via `RULES_*` env vars) in `analysis/thresholds.py`, the
+budget-object/contract text matcher in `analysis/matching.py`, and the
+upsert/resolve bookkeeping in `analysis/engine.py`.
 
-**Tone.** Every flag's `message` is written to be neutral and non-accusatory
-("изисква обяснение" / "requires an explanation") -- a flag means "this is
-worth a look," never "this is wrong." Severities are `info` < `warning` <
-`high`, roughly: "worth knowing" / "worth asking about" / "worth asking
-about soon."
+## The flag contract
+
+Every flag row (`db.models.Flag`) carries:
+
+| Field | Meaning |
+|---|---|
+| `tier` | **`violation`** -- a clear legal breach on the face of the data; **`signal`** -- a pattern consistent with misconduct that needs documents to confirm or dismiss; **`opacity`** -- lawful, but unverifiable from what is published, so documents should be requested. |
+| `severity` | `info` < `warning` < `high`: "worth knowing" / "worth asking about" / "worth asking about soon". Independent of tier (a big `signal` can be `high`, a small `violation` `info`). |
+| `message` | The 1-2 sentence Bulgarian headline. |
+| `explanation` | 2-4 plain Bulgarian sentences: what we see, why it *may* point to misconduct, and what would make it innocent. |
+| `documents_json` | Bulgarian names of the documents a citizen should request under ЗДОИ to settle the question (e.g. "техническа спецификация", "приемо-предавателни протоколи", "решение на общинския съвет за промяна на бюджета (чл. 124 ЗПФ)"). |
+| `law_ref` | The legal citation, verified against `docs/law/*.txt` (see below). |
+| `subject_type` / `subject_id` / `subject_key` | What the flag is about (`contract`, `contractor`, `contract_group`, `procedure`, `budget_object`, `report`) and its upsert key. |
+| `details_json` | The supporting numbers (dates, amounts, members of a group, ...). |
+
+**Tone.** Neutral, never accusatory: "може да сочи към нередност",
+"изисква обяснение", "следва да се поиска". A flag means "this is worth a
+look," never "this is wrong." Example (`price_unverifiable`): *"Тази покупка
+може да сочи към нередност: за договора с … не са публикувани количества и
+спецификации, така че не може да се прецени дали цената е обоснована."*
 
 **Lifecycle.** `analyze` upserts flags keyed on `(rule, subject_key)`: a
-subject seen again updates the existing row (`last_seen_at`, `details_json`,
-`severity`, `message`) in place; a subject a rule no longer produces gets
-`resolved_at` set (not deleted) -- the flag's history stays visible, it's
-just marked as no longer current.
+subject seen again updates the existing row (every rule-owned column:
+tier/severity/message/explanation/documents/details/law_ref/subject, plus
+`last_seen_at`) in place; a subject a rule no longer produces gets
+`resolved_at` set (not deleted). Meta rules (`eu_funded_irregularity`) run
+**last**, over every other rule's output. `analyze` prints, per rule, the
+open/new/updated/resolved counts and the tiers emitted, then the open
+total per tier.
 
-**Legal texts.** All law quotes below are literal excerpts from
-`docs/law/*.txt` (lex.bg consolidated texts, extracted 2026-10-06; see
-`docs/law/INDEX.md`). Bulgarian legal thresholds are stated in leva (лв.);
-this project's data is in EUR, so BGN figures are converted using the fixed
-peg rate `BGN_EUR_RATE = 1.95583` (`analysis/thresholds.py`).
+**Schema.** `tier`, `explanation`, `documents_json` were added 2026-10-07;
+`db/migrate.py` adds them to an existing SQLite `flags` table with guarded,
+idempotent `ALTER TABLE … ADD COLUMN` statements on every `init_db()`.
 
-## 1. LatePublicationRule (`late_publication`)
+**Legal texts.** Every article cited by a rule was checked with
+`grep "^Чл\. N\."` in `docs/law/zop.txt`, `zpf.txt`, `zmsma.txt`,
+`zdoi.txt` (lex.bg consolidated texts, extracted 2026-10-06, see
+`docs/law/INDEX.md`); the key sentence is quoted verbatim in
+`analysis/thresholds.py`'s docstring. Two sources are cited but **not** in
+`docs/law/`: the Наказателен кодекс (чл. 248а, EU-funds fraud, cited per the
+project brief) and the Закон за счетоводството (cited only as "реквизити на
+първичните счетоводни документи", no article number). ЗОП states thresholds
+in leva; data is in EUR, converted at the fixed peg `BGN_EUR_RATE =
+1.95583`.
+
+## Summary (run on `data/nessebar.db`, 2026-10-07)
+
+411 signed EOP contracts, 411 SIGMA records, capital ledger 2021-02..2022-02
+and 2026-02..2026-08, budget reports 2019-01..2022-03 and 2026-01..2026-08.
+
+| Rule | Tier | Severity | Legal basis | Open |
+|---|---|---|---|---|
+| `late_publication` | violation | info/warning/high by delay | ЗОП чл. 26, ал. 1, т. 1; чл. 256а | 5 |
+| `annex_over_cap` | violation | high | ЗОП чл. 116, ал. 2; чл. 255, ал. 3 | 3 |
+| `unplanned_spending` | violation | warning | ЗПФ чл. 128, ал. 1; чл. 102, ал. 1; чл. 124, ал. 2 | 16 |
+| `short_offer_deadline` | violation / signal | high / warning | ЗОП чл. 74, чл. 178, чл. 188 | 0 |
+| `splitting` | signal | warning; high > 2x boundary | ЗОП чл. 21, ал. 15-16; чл. 20; чл. 247 | 3 |
+| `exceptional_procedure` | signal | by value (fuel/exchange: info) | ЗОП чл. 79, чл. 182, чл. 191; чл. 250а | 30 |
+| `bid_at_ceiling` | signal | warning >= 100k; high >= 500k | ЗОП чл. 21, ал. 1-2; чл. 2, ал. 2 | 18 |
+| `single_bidder` | signal | warning >= 100k; high >= 500k | ЗОП чл. 2, ал. 2 | 31 |
+| `contractor_concentration` | signal | info | ЗОП чл. 2, ал. 1 | 0 |
+| `annex_growth` | signal | warning | ЗОП чл. 116, ал. 2 | 31 |
+| `overspend_vs_plan` | signal | warning | ЗПФ чл. 124, ал. 2; чл. 125 | 1 |
+| `plan_jump` | signal | warning | ЗПФ чл. 124, ал. 2; ЗМСМА чл. 22, ал. 2 | 14 |
+| `unmatched_spending` | signal | info | ЗОП чл. 20, ал. 4, т. 3 | 13 |
+| `missing_annual_report` | signal | warning | ЗПФ чл. 133, ал. 4; чл. 140, ал. 5-6; чл. 173 | 4 |
+| `eu_funded_irregularity` | signal (meta) | info | НК чл. 248а (not in docs/law); OLAF | 10 |
+| `price_unverifiable` | opacity | info; warning >= 100k | ЗОП чл. 48, ал. 1, т. 1; чл. 36, ал. 1, т. 12 | 2 |
+| `missing_quantity` | opacity | info/warning/high by value | ЗОП чл. 2, ал. 2; Прил. № 4, ч. В, т. 6 | 75 |
+| `missing_value` | opacity | warning | ЗОП чл. 36, ал. 1, т. 12 | 0 |
+| `near_threshold` | opacity (signal with splitting) | info (warning) | ЗОП чл. 20, ал. 2-3; чл. 21, ал. 14 | 4 |
+| `missing_monthly_report` | opacity | info | ЗПФ чл. 133, ал. 1 и 4; ЗДОИ чл. 15а, ал. 4 | 41 |
+
+Totals: 301 open -- 24 violation, 155 signal, 122 opacity. No
+contract-level rule fires on more than ~9% of the 411 signed contracts
+(`missing_quantity` Scope A: 38; `exceptional_procedure`/`annex_growth`:
+30-31).
+
+## Shared reference data
+
+### Procedure types (verified in `data/nessebar.db`)
+
+EOP signed contracts carry the ЦАИС ЕОП enum (`raw_json.contract.ProcedureType`),
+EOP open tenders the Bulgarian label (`raw_json.procedure.ProcedureType`),
+SIGMA its own short label. Counts match one-to-one across sources:
+
+| EOP enum | EOP label | SIGMA label | ЗОП | Regime tier | Exceptional? |
+|---|---|---|---|---|---|
+| `OpenProcedure` (183) | Открита процедура | Открита (182) | чл. 18, ал. 1, т. 1 | 3 (ал. 1) | no |
+| `PublicCompetition` (95) | Публично състезание | Състезание (95) | т. 12 | 2 (ал. 2) | no |
+| `CollectingOffersWithNotice` (104) | Събиране на оферти с обява | Събиране на оферти (104) | чл. 187 | 1 (ал. 3) | no |
+| `NegotiatedProcedure` (19) | Договаряне без предварително обявление | Пряко / без обявление (23, together with ↓) | т. 8, чл. 79 | 3 | **yes** -- fine чл. 250а |
+| `DirectNegotiation` (4) | Пряко договаряне | ↑ | т. 13, чл. 182 | 2 | **yes** -- fine чл. 250а |
+| `InvitationToSpecificEconomicOperators` (7) | Покана до определени лица | Договаряне с покана (7) | чл. 191 | 1 | **yes** |
+
+Every EOP `NegotiatedProcedure` contract's `raw_json.procedure.ProcedureType`
+reads "Договаряне без предварително обявление" and every `DirectNegotiation`
+reads "Пряко договаряне", which fixes the mapping. Mapping lives in
+`rules/_common.py` (`PROCEDURE_REGIME_TIER`, `EXCEPTIONAL_PROCEDURES`).
+
+### EOP <-> SIGMA twins (`rules/linking.py`)
+
+SIGMA's `raw_json.unp` is the same УНП as EOP's `contract.TenderNumber`; a
+SIGMA record with the same УНП and contractor EIK (closest value if several)
+is the EOP contract's twin. Only SIGMA has `bids_received`/`eu_funded`;
+only EOP has dates, estimates and notice texts. Rules use the twin for
+those fields instead of summing both sources.
+
+### ЗОП чл. 20 thresholds (in force since 01.01.2024, ДВ бр. 88/2023)
+
+| Category | Direct award below (ал. 4) | Обява/покана (ал. 3) | Публично състезание / пряко договаряне (ал. 2) | EU-level, open procedure (ал. 1) |
+|---|---|---|---|---|
+| Строителство | 80 000 лв. (40,903 €) | 80 000 - 300 000 лв. | 300 000 - 10 526 116 лв. (153,388 € - 5,381,936 €) | >= 10 526 116 лв. |
+| Доставки и услуги | 50 000 лв. (25,565 €) | 50 000 - 100 000 лв. (to 51,129 €) | 100 000 - 273 812 лв. (to 139,998 €) | >= 273 812 лв. |
+| Услуги по Прил. № 2 | 100 000 лв. (51,129 €) | -- (ал. 3 excludes them) | 100 000 - 1 466 850 лв. (to 749,999 €) | >= 1 466 850 лв. |
+
+`category_of()` maps `TypeOfContract` 3 -> works, 2 -> supplies, 1 ->
+services (Прил. № 2 when the main CPV matches `annex2_cpv_prefixes`, an
+approximation of the annex's CPV list; e.g. 98351110 parking enforcement is
+*not* in it). The pre-2024 values are **not** in our local law text (only
+the current wording plus "изм." notes), so: `splitting` applies these
+values to all years (it can only under-detect if, as generally reported,
+earlier boundaries were lower -- unverified locally); `near_threshold` only
+looks at procedures announced on/after 2024-01-01.
+
+---
+
+## Violations
+
+### `late_publication`
 
 **Checks:** for each EOP contract, the gap between signing
-(`raw_json.contract.ContractDate`) and the award notice being sent for
-publication (`raw_json.contract.TedPublishDate`), against the legal
-deadline.
+(`raw_json.contract.ContractDate`) and the award notice
+(`raw_json.contract.TedPublishDate`).
 
 **Legal basis:** ЗОП чл. 26, ал. 1, т. 1 -- *"Възложителите изпращат за
 публикуване обявление за възлагане на поръчка в срок до: 1. тридесет дни
 след сключване на договор за обществена поръчка или рамково споразумение."*
-(30 days after signing.) The same figure is repeated for contracts at the
-"пряко възлагане"-adjacent values of ЗОП чл. 20, ал. 3/7, at чл. 194, ал. 4:
-*"В 30-дневен срок от сключването на договора възложителят изпраща за
-публикуване в РОП обявление за възлагане на обществена поръчка..."* -- so one
-30-day threshold covers every contract.
+Repeated for публично състезание at чл. 185, т. 1 and for чл. 20, ал. 3
+contracts at чл. 194, ал. 4 (*"В 30-дневен срок от сключването на договора
+възложителят изпраща за публикуване в РОП обявление…"*). Fine: чл. 256а.
 
-**Threshold:** `late_publication_deadline_days = 30`.
+**Thresholds:** 30 days + 7-day grace (sending vs. publishing lag); severity
+info, warning > 14 days late, high > 60 days late. EOP only.
 
-**Severity:** `high` (a hard legal deadline, clearly missed).
+### `annex_over_cap`
 
-**Only applies to `source == "eop"`** -- SIGMA records don't carry an
-equivalent publish-date field.
+**Checks:** EOP contracts whose `CurrentContractValue` exceeds
+`ContractValue` x 1.5. Values are re-derived to EUR from their own currency
+codes (`Currency`/`CurrentContractCurrency`: 1 = EUR, 3 = BGN) -- **not**
+the raw `...Euro` fields, which go stale after an amendment (one record's
+`CurrentContractValueEuro` stayed equal to the original although
+`CurrentContractValue` changed).
 
-## 2. OverspendVsPlanRule (`overspend_vs_plan`)
+**Legal basis:** ЗОП чл. 116, ал. 2 -- *"ако се налага увеличение на
+цената, то не може да надхвърля с повече от 50 на сто стойността на
+основния договор … Когато се правят последователни изменения,
+ограничението се прилага за общата стойност на измененията."* Fine: чл.
+255, ал. 3. The explanation names the one lawful exception (options
+foreseen in the original documentation, чл. 116, ал. 1, т. 1) and the
+possibility of a register data error.
 
-**Checks**, at the latest reporting period, for each capital-ledger object:
-- cumulative spending this year (`spent_period`) exceeds the current annual
-  plan (`plan_current`) by more than 2% *and* more than 10,000 EUR; and/or
-- cumulative spending (`spent_prior + spent_period`) exceeds the object's
-  total estimated cost (`estimated_total`).
+**Data-quality guards (tuned 2026-10-07):** the first run produced 20
+flags; 16 were artifacts -- `CurrentContractValue` entered in stotinki/cents
+(exactly +9,900%), or unit-price contracts whose "ContractValue" is the sum
+of unit prices (0.59 €, 541 €, 2,023 € against six-figure estimates). Hence:
+growth above `annex_max_plausible_ratio = 5.0` silences both annex rules,
+and the violation tier requires **matching currency codes** on both values
+(one mixed-currency case stays an `annex_growth` signal). Remaining 3: EOP
+149721 (+198%), 137216 (+80%), 145407 (+76%) -- all "текущ ремонт" street/
+pavement maintenance contracts, BGN on both sides; worth a document request.
 
-**Threshold:** `overspend_ratio = 1.02`, `overspend_abs_eur = 10_000`.
+### `unplanned_spending`
 
-**Severity:** `warning`.
+**Checks**, for every capital-ledger object at the latest reported period
+**of each year** (so a plan added later that year resolves the flag):
+- `no_plan`: annual plan (`plan_current`) 0/None while `spent_period` >=
+  10,000 €; and/or
+- `over_estimate`: cumulative spending (`spent_prior + spent_period`)
+  exceeds the object's total estimated cost by >= 10,000 €.
 
-**Legal/administrative context:** ЗПФ чл. 140 governs the municipality's
-annual budget-execution report and its public discussion/publication; this
-rule is this project's early, month-by-month analogue of that annual check.
+**Legal basis:** ЗПФ чл. 128, ал. 1 -- *"Не се допуска извършването на
+разходи … както и започването на програми или проекти, които не са
+предвидени в годишния бюджет на общината."*; чл. 102, ал. 1. The
+explanation says the spending is lawful if the council approved a budget
+change under чл. 124, ал. 2 (*"Промените по общинския бюджет … се одобряват
+от общинския съвет."*), and that decision is the first document listed.
 
-## 3. PlanJumpRule (`plan_jump`)
+**Thresholds:** `unplanned_min_spent_eur = 10,000`,
+`unplanned_min_excess_eur = 10,000` (2026-08 has 46 zero-plan objects, most
+of them 600-5,000 € items; the minimum keeps the 9 material ones). Subject
+key: `<paragraph>:<object>:<year>`.
 
-**Checks** each capital-ledger object's `plan_current` across consecutive
-reporting periods for:
-- a month-over-month increase of more than 50% **and** more than 100,000
-  EUR; or
-- a new object appearing mid-year (its first reported period isn't the
-  dataset's first period) with an initial plan over 250,000 EUR.
+**Caveat:** in the 2026 ledger, own-funds objects such as "Товарни
+автомобили за ОП Управление на отпадъците" (358,927 € spent) carry 0 in
+every plan column, including the per-source funding breakdown, while
+`estimated_total` equals the amount spent -- the zero is in the
+municipality's own file, not a parsing artifact, but the ledger's
+conventions are not documented anywhere we could find.
 
-**Thresholds:** `plan_jump_ratio = 1.5`, `plan_jump_abs_eur = 100_000`,
-`new_object_min_eur = 250_000`.
+### `short_offer_deadline` (violation variant -- see Signals)
 
-**Severity:** `warning`.
+---
 
-**Real example found in `data/nessebar.db`:** object "Основен ремонт на
-улица от о.т.307 Слънчев бряг до кръстовище с ул.Сатурн" jumps from a
-109,160 EUR plan in 2026-02 to 424,218 EUR in 2026-03 (+289%, +315,058 EUR).
+## Signals
 
-## 4. SingleBidderRule (`single_bidder`)
+### `splitting`
 
-**Checks:** contracts awarded after exactly one bid/offer (`bids_received ==
-1`), above a value threshold.
+**Legal basis:** ЗОП чл. 21, ал. 15 -- *"Не се допуска разделяне на
+обществена поръчка на части с което се прилага ред за възлагане за по-ниски
+стойности"*; fine чл. 247, ал. 1. ал. 16 limits it: *"Не се смята за
+разделяне възлагането в рамките на 12 месеца на две или повече поръчки: 1.
+с обект изпълнение на строеж …; 2. с идентичен или сходен предмет, които не
+са били известни на възложителя …"*; ал. 4: lots of one tender are one
+procurement.
 
-**Thresholds:** `single_bidder_warning_eur = 100_000` -> `warning`;
-`single_bidder_high_eur = 500_000` -> `high`.
+**Unit of analysis:** a *tender* (all its lots summed, чл. 21, ал. 4) -- or,
+for the contractor path, a tender's share won by one contractor. Lots of one
+tender are never "split".
 
-**Only applies where `bids_received` is populated** -- in this project's
-data that is SIGMA records only (EOP's own export never carries this field;
-see `db/models.py`'s `Procurement.bids_received` docstring).
+**Groups** (signed EOP contracts, rolling 12-month window from an anchor):
+1. **by contractor EIK** + category; same CPV division for supplies/
+   services; for works, the same street or cadastral parcel (`ST:`/`CAD:`
+   tokens from `matching.distinctive_tokens`) -- separate строежи are exempt
+   (ал. 16, т. 1);
+2. **by main CPV prefix (5 digits) + similar title** (Jaccard over
+   `matching.tokenize` >= 0.5; works also need a shared street/parcel).
 
-## 5. ContractorConcentrationRule (`contractor_concentration`)
+**Condition:** >= 2 units, each below a чл. 20 boundary **and** awarded under
+a regime only allowed below it (обява/покана below the ал. 2 boundary;
+публично състезание/пряко договаряне below the ал. 1 boundary), while their
+sum crosses it. Open procedures never count (top regime: nothing gained by
+dividing). Highest boundary first; each unit joins at most one group;
+CPV-path groups already covered by a contractor-path group are dropped.
+Severity warning; high when the sum > 2x the boundary. `details_json`:
+`members` (subject, УНП, date, value, procedure), `sum_eur`,
+`boundary_bgn`/`boundary_eur`, `required_regime`.
 
-**Checks:** any contractor with >= 3 contracts **and** >= 15% of total
-contracted EUR, within the trailing ~24 months.
+**Renewal exclusion (tuned 2026-10-07):** the first run produced 6 groups;
+3 were successive annual contracts for a recurring need (БТК telecom
+15.09.2021 -> 15.09.2022; irrigation maintenance; food for Домашен
+социален патронаж -- 331-365 days apart), which ЗОП чл. 21, ал. 8 values per
+12-month period. Groups whose members are all >= 300 days apart
+(`splitting_renewal_gap_days`) are skipped. Remaining 3 (hand-checked):
+- ДИ ЕНД ЕМ КОНСУЛТ -- two обяви signed the **same day** (22.06.2023),
+  consecutive УНП 00126-2023-0030/0031, 26.3k € each, both consultancy for
+  the same heating-appliance replacement project: the textbook pattern.
+- ЕСПИ ИНВЕСТ -- two обяви 2 months apart on the **same parcel**
+  (53045.502.222, a school in Обзор): heating installation + retaining wall,
+  sum 183,950 € > 153,388 €. Could be two строежи (ал. 16, т. 1) -- the
+  explanation says so.
+- ЛИНК Мобилити -- two обяви 6 months apart for the parking payment
+  system/intermediary, 35,790 € each (= 70,000 лв.).
 
-**Thresholds:** `concentration_min_contracts = 3`,
-`concentration_share = 0.15`, `concentration_window_days = 730`.
+### `exceptional_procedure`
 
-**Severity:** `info`.
+**Checks:** signed contracts awarded through the negotiated / no-notice
+family (table above). EOP is canonical; a SIGMA record counts only when its
+УНП has no EOP record at all.
 
-**De-duplication note:** this rule runs over `source == "eop"` contracts
-*only*, not EOP+SIGMA combined. EOP and SIGMA were found to both publish
-largely the same underlying contracts -- ~87% of EOP contracts have a
-same-EIK-same-value SIGMA "twin" -- so summing both would double most
-spending and distort every contractor's share. EOP (ЦАИС ЕОП) is the
-current, unified national register and has the complete/clean dates needed
-for the rolling window, so it is used as the canonical contract universe for
-this one rule. (Other rules either use only one source already for other
-reasons -- `late_publication`/`annex_growth` need EOP's raw contract fields,
-`single_bidder` needs SIGMA's `bids_received` -- or, for
-`unmatched_spending`'s *matching* step, deliberately draw on both sources
-since more candidates can only improve recall there, not distort a sum.)
+**Legal basis:** ЗОП чл. 79, ал. 1 -- *"Публичните възложители могат да
+прилагат процедура на договаряне без предварително обявление само в
+следните случаи"*, ал. 6 *"С решението за откриване на процедурата
+възложителят мотивира приложимото основание по ал. 1."*; чл. 182, ал. 1-2
+(пряко договаряне, same duty to motivate); чл. 191, ал. 1 (покана до
+определени лица "когато е налице някое от следните основания"). Fine: чл.
+250а for чл. 18, ал. 1, т. 8-10 and 13.
 
-## 6. UnmatchedSpendingRule (`unmatched_spending`)
+**Severity:** info < 100k, warning >= 100k, high >= 500k € -- except
+**info** when the texts mention a commodity exchange ("стокова борса", чл.
+79, ал. 1, т. 7) or the main CPV is fuel (09000000/091*). **Tuned
+2026-10-07:** the top-2 raw flags were EOP ids 646/644 (1.48M €, 978k €
+fuel); their Решение -- not stored in `raw_json` -- cites чл. 79, ал. 1, т.
+7 (see `missing_quantity`'s caveats below). New top-2, hand-checked as
+right: EOP 188598 (140k €, EU-funded ПОС 2021-2027 stove replacement,
+no ground in any stored text) and EOP 170371 (135.7k € пряко договаряне for
+a school playground repair, 11.5% above its own estimate, no ground stated).
 
-**Checks:** each capital-ledger object with cumulative spending-to-date at
-or above the ЗОП direct-award threshold, for whether automated text/value
-matching (`analysis.matching.find_best_match`) finds *any* plausible
-corresponding published contract (EOP or SIGMA).
+### `short_offer_deadline`
 
-**Legal basis (threshold):** ЗОП чл. 20, ал. 4 -- below these estimated
-values a municipality may award **without any competitive procedure**:
-- т. 1: *"80 000 лв. — при строителство"*
-- т. 2: *"100 000 лв. — при услуги по приложение № 2"*
-- т. 3: *"50 000 лв. — при доставки и услуги извън тези по т. 2"*
+**Legal minimum offer periods** (verified): open procedure 30 days from
+sending the notice (ЗОП чл. 74, ал. 1), shortenable to no less than 15 (ал.
+2 prior-information notice, ал. 4 urgency, motivated per ал. 5); публично
+състезание 20 days (чл. 178, ал. 2), no less than 10 (ал. 3/4); събиране на
+оферти с обява 10 days from publication (чл. 188, ал. 1, wording in force
+since 22.12.2023). Покана до определени лица and negotiations have no
+statutory offer period and are skipped.
 
-This rule uses т. 3's 50,000 лв. (≈25,565 EUR) -- the lowest, most general
-figure -- since capital-ledger objects mix construction, design, and
-equipment-supply spending, and the lower threshold only widens the candidate
-pool that the separately-conservative matcher then has to fail to match
-before anything is flagged.
+**Notice date:** `notices[]` in `raw_json.tender_detail` carry no dates, so
+the earliest of `OfferPhaseStartDate` (≈ the sending date) and
+`PublicationDate` is used, falling back to `published_at` -- the earliest
+date gives the longest interval, so every "too short" is conservative. Days
+are counted on Sofia calendar dates (EOP stores a contract signed "18.09" as
+17.09 21:00 UTC).
 
-**Severity:** `info` (the lowest-confidence rule here by design).
+**Tiers:** *violation* (high) when notice->contract or the offer period
+(`OfferPhaseEndDate` - notice) is below the bare minimum; *signal*
+(warning) when notice->contract < legal minimum + 5-day evaluation margin,
+or the offer period < the legal minimum (a shortened period must be
+motivated). The margin deliberately excludes чл. 112, ал. 6's 14-day
+standstill, which ал. 7, т. 2 waives for a sole participant. Обяви before
+22.12.2023 are never called a violation.
 
-**Message is deliberately hedged:** *"не открихме публикуван договор за
-този обект; може да е възложен под праговете или описан различно"* ("we
-didn't find a published contract for this object; it may have been awarded
-below the thresholds, or described differently") -- a "no match" means *this
-script* found none, not that no contract exists.
+**Result:** 0 flags. The shortest offer periods in the data are exactly the
+legal minimums and never below (open 30 days, публично състезание 20,
+обява 10, on Sofia dates from the offer-phase start), and the shortest
+notice->contract gaps are 45 (open), 47 (публично състезание) and 18 days
+(обява) -- all above minimum + margin (35 / 25 / 15). The rule is kept as a
+guard for future data, not tuned down to produce hits.
 
-### The matcher (`analysis/matching.py`)
+### `bid_at_ceiling`
+
+**Checks:** EOP contracts whose tender has exactly one signed contract
+(a lot against the whole tender's estimate would be meaningless), with
+`contract_value >= 0.98 x estimated value` (and <= 1.05 -- further above it
+the data shows VAT/currency/lot mismatches, e.g. one contract at 1.94x its
+estimate), and one bid **or an unknown number** (SIGMA twin's
+`bids_received`). warning >= 100k, high >= 500k €. Estimated value:
+`raw_json.procedure.EstimatedValue` with its currency code.
+
+**Legal basis:** ЗОП чл. 21, ал. 1-2 (the estimate is set by the buyer,
+*"в резултат на проведени пазарни проучвания или консултации"*); чл. 2,
+ал. 2. The innocent reading (unit-price contract with a cap; a genuine
+market study behind the estimate) is in the explanation.
+
+**Hand-check:** top-2 look right -- EOP 120105, ЕКОБУЛСОРТ waste
+pre-treatment, 3,579,043 € = 100.0% of the estimate with 1 bid (SIGMA);
+EOP 162336, closed swimming pool, 2,303,191 € = 104.8% of the estimate, bids
+unknown. 18 flags = 6.8% of the 266 single-contract tenders (126 of 266 are
+>= 0.98 before the value/bids filters -- contract value = estimate is common
+for capped service contracts).
+
+### `single_bidder`
+
+Contracts with `bids_received == 1` (SIGMA only) above 100k € (warning) /
+500k € (high). Legal basis: ЗОП чл. 2, ал. 2 -- *"възложителите нямат право
+да ограничават конкуренцията чрез включване на условия или изисквания,
+които дават необосновано предимство или необосновано ограничават
+участието"*.
+
+### `contractor_concentration`
+
+A contractor with >= 3 contracts **and** >= 15% of total contracted EUR in
+the trailing ~24 months (`subject_type = "contractor"`, so the site links
+to the contractor page). Runs over EOP only: ~87% of EOP contracts have a
+same-EIK-same-value SIGMA twin, so summing both would double most spending.
+Legal anchor: ЗОП чл. 2, ал. 1, т. 1-2 (равнопоставеност, свободна
+конкуренция). 0 open flags in the current window.
+
+### `annex_growth`
+
+Current value > original x 1.10, up to the 50% cap (above it:
+`annex_over_cap`, never both -- except mixed-currency cases, which stay
+here). Same value derivation and plausibility guard as `annex_over_cap`.
+The 10% level is an early transparency signal, far below ЗОП чл. 116, ал.
+2's ceiling.
+
+### `overspend_vs_plan` (the softer case)
+
+Objects **with** an annual plan whose cumulative spending this year exceeds
+it by > 2% and > 10,000 €, at the latest period. Objects that
+`unplanned_spending` covers (no plan / over the total estimate) are skipped,
+so one object never gets both -- which is why this rule dropped from 28 to
+1 open flag on 2026-10-07. Innocent reading: an approved budget change
+(чл. 124, ал. 2) or a mayor's compensated change (чл. 125 ЗПФ) not yet in
+the ledger.
+
+### `plan_jump`
+
+An object's `plan_current` rising month-over-month by > 50% **and** >
+100,000 €, or a new object appearing mid-year with an initial plan >
+250,000 €. Example: "Основен ремонт на улица от о.т.307 Слънчев бряг до
+кръстовище с ул.Сатурн" 109,160 € (2026-02) -> 424,218 € (2026-03). Every
+historical transition is checked, so past jumps never auto-resolve (they
+are facts). Legal anchor: ЗПФ чл. 124, ал. 2; ЗМСМА чл. 22, ал. 2 (council
+acts published within 7 days).
+
+### `unmatched_spending`
+
+Capital-ledger objects with spending >= the direct-award threshold (ЗОП чл.
+20, ал. 4, т. 3: 50 000 лв. = 25,565 €, the lowest and most general figure)
+for which `matching.find_best_match` finds **no** plausible EOP/SIGMA
+contract. Lowest-confidence rule (info, hedged wording: *"не открихме
+публикуван договор за този обект; може да е възложен под праговете или
+описан различно"*).
+
+#### The matcher (`analysis/matching.py`)
 
 A budget object and a contract are considered a match if **both**:
 
@@ -175,45 +427,64 @@ own hedged wording absorbs that uncertainty rather than the matcher
 overreaching into a false "these definitely don't correspond" claim in
 either direction.
 
-## 7. AnnexGrowthRule (`annex_growth`)
+### `missing_annual_report`
 
-**Checks:** EOP contracts where the current value
-(`raw_json.contract.CurrentContractValue`, after any annexes/amendments)
-exceeds the originally signed value (`ContractValue`) by more than 10%.
+A completed year Y with no B1/B3 cash-execution report for 12/Y in
+`budget_reports` once 31 March of Y+1 has passed. Severity warning. Legal
+basis: ЗПФ чл. 133, ал. 1 and 4 (*"Първостепенните разпоредители с бюджет
+представят в Министерството на финансите ежемесечно и на тримесечие
+отчети"*, *"се публикуват на интернет страниците"* -- the mayor is the
+municipality's първостепенен разпоредител, чл. 11, ал. 3); чл. 140, ал. 5-6
+(annual report adopted by 30 September, *"Приетият отчет … се публикуват на
+интернет страницата на общината"*); fine чл. 173. December of such a year
+gets this flag only, not also a monthly one. Subject `annual:YYYY`.
+Current: 2022, 2023, 2024, 2025 -- the same gap as the monthly reports
+below (the scraper's archive coverage, a background download is under way).
 
-Both values are **re-derived to EUR from their own currency codes**
-(`Currency`/`CurrentContractCurrency`: `1` = EUR, `3` = BGN, confirmed
-against every sampled contract in `data/nessebar.db` -- see
-`scrapers/eop.py`'s `CURRENCY_CODES` and `analysis/rules.py`'s
-`_to_eur`) -- **not** the raw payload's own `...Euro` fields. Those were
-found to sometimes go stale after an amendment: one real record's
-`CurrentContractValueEuro` stayed numerically identical to its original
-`ContractValueEuro` even though `CurrentContractValue` had clearly changed,
-and another had a `CurrentContractValue` that, taken at face value with the
-wrong currency assumption, implied a ~51x blow-up that the properly
-currency-coded value shows never happened. Trusting the raw `...Euro` field
-would have produced both false negatives and a false, alarming positive.
+### `eu_funded_irregularity` (meta rule -- runs last)
 
-**Legal context:** ЗОП чл. 116, ал. 2 caps the **cumulative** increase from
-amendments under чл. 116, ал. 1, т. 2/3 at 50% of the original contract
-value: *"...то не може да надхвърля с повече от 50 на сто стойността на
-основния договор или рамковото споразумение."* This rule's 10% warning
-threshold is deliberately far below that statutory ceiling -- it is an early
-transparency signal ("this contract's value has grown, worth a look"), not
-a claim that the 50% legal cap was breached.
+A contract that already carries at least one other flag in this run
+(directly, or as a member of a `splitting` group) **and** is EU-funded:
+SIGMA `eu_funded`, EOP `procedure.IsEUFinanced`, or notice wording naming an
+operational programme / EU fund / ПРСР / План за възстановяване /
+"безвъзмездна финансова помощ". A bare "Европейския съюз" is deliberately
+not enough: in this data it mostly appears in insurance-territory clauses
+("… на територията на Република България и Европейския съюз") and product
+origin fields (9 of the 12 hits of a naive "Европейски…" search). EOP/SIGMA twins collapse onto the EOP
+subject. The explanation says irregularities on EU funds are reported to
+the programme's managing authority and to OLAF, and that misuse is a crime
+under чл. 248а НК (**not** in `docs/law/`; cited per the project brief).
+Documents: the grant contract (договор за безвъзмездна финансова помощ),
+the managing authority's verification reports, project reports.
 
-**Threshold:** `annex_growth_ratio = 1.10`.
+---
 
-**Severity:** `warning`.
+## Opacity
 
-## 8. MissingValueRule (`missing_value`)
+### `price_unverifiable` and `missing_quantity` -- how they split
 
-Unchanged from the original implementation: flags a signed contract
-(`contractor_name` or `contract_date` present) whose `contract_value_eur`
-and `contract_value_bgn` are both `None`/`0`. Applies to signed contracts
-only -- open tenders aren't yet obliged to show a value.
+Both answer "can a citizen check the price?". Rather than two flags on one
+contract, they are split (`rules/quantity.py`):
 
-## 9. MissingQuantityRule (`missing_quantity`)
+- **`price_unverifiable`** -- the broad case: a signed supply **or works**
+  contract (`TypeOfContract` 2 or 3) >= 20,000 € with **no** quantity
+  anywhere, **no** substantive technical description (every published
+  description -- `TenderDescription`, `notice_text`, each notice's short
+  and lot descriptions -- is shorter than 80 characters once the title is
+  removed from it), and **no** unit-price/framework wording. Only a title and
+  a total sum are public. info; warning >= 100k €. Legal anchor: ЗОП чл. 48,
+  ал. 1, т. 1 (specifications *"позволяват точно определяне на параметрите
+  на предмета на поръчката"*) and чл. 36, ал. 1, т. 12 (contracts are
+  published *"както и приложенията към тях"*). Works contracts also list
+  "количествено-стойностна сметка" and "актове за установяване на
+  извършените СМР" among the documents. Current: 2 (EOP 201397 parking
+  equipment 152,848 €; EOP 62013 multilift truck 201,960 €).
+- **`missing_quantity`** -- the quantity-only case (below): a supply
+  contract that *does* publish a description, but no count; plus Scope B
+  (capital budget objects). A contract that is `price_unverifiable` is never
+  also `missing_quantity`.
+
+### `missing_quantity`
 
 **The citizen-facing question this answers:** if a report says "we bought new
 pens for the offices" or "new uniforms for staff" and the spend was 185,000
@@ -221,9 +492,11 @@ pens for the offices" or "new uniforms for staff" and the spend was 185,000
 anything, since 4 pens and 1 t-shirt are consistent with that same invoice
 unless the exact number of objects purchased is published somewhere. This
 rule flags that specific gap, for (A) EOP supply contracts and (B) § 52
-capital budget objects.
+capital budget objects. Since 2026-10-07 Scope A only fires when some
+description *is* published (otherwise `price_unverifiable` covers the
+contract); `details_json["description_chars"]` records how long it is.
 
-### Scope A: EOP supply ("доставки") contracts
+#### Scope A: EOP supply ("доставки") contracts
 
 **TypeOfContract mapping (verified against every sampled contract in
 `data/nessebar.db`'s `raw_json.contract.TypeOfContract`):**
@@ -310,7 +583,7 @@ For Scope B, there is no ЗОП notice at all -- a capital budget ledger is a
 transparency principle, ЗПФ чл. 20, т. 7, explicitly noted as *not* a direct
 requirement to itemize quantities in that specific document.
 
-### Scope B: § 52 capital budget objects
+#### Scope B: § 52 capital budget objects
 
 Filters `budget_line_items` rows with `unit == "Общо"`, `paragraph == "5200"`
 ("Придобиване на дълготрайни активи"), at the latest reporting period, same
@@ -334,14 +607,16 @@ municipality actually failed to specify a quantity anywhere. Treat Scope B
 flags as "the budget ledger itself doesn't tell you the count" (true by
 construction) rather than "no quantity exists anywhere" (unverified).
 
-### Honest caveats / known limitations (both scopes)
+#### Honest caveats / known limitations (both scopes)
 
 - **A singular noun implies a quantity of one, and this rule doesn't know
   that.** E.g. "Доставка на фабрично нов, товарен автомобил с надстройка тип
   „Мултилифт“" (ids 561/427/698, ~250-300k €) is grammatically singular --
   almost certainly one truck -- but states no explicit "1 брой", so it gets
   flagged. This is a real but low-severity gap in this rule's precision, not
-  a transparency problem with the underlying contract.
+  a transparency problem with the underlying contract. (One of them, EOP
+  62013, publishes no description at all and is now a `price_unverifiable`
+  flag instead.)
 - **Ids 646/644/645 ("Доставка на горива...", up to 1,478,239 €) were
   re-checked after `notice_text` was added (2026-10-07) and are still
   flagged -- this time confirmed against the *full* published-notice HTML,
@@ -407,37 +682,82 @@ construction) rather than "no quantity exists anywhere" (unverified).
   "genuinely open-ended, ordered as needed" than "quantity omitted," given
   their own description explicitly frames deliveries as per-request.
 
-## ЗОП чл. 20 thresholds, for reference
+### `missing_value`
 
-Since several rules/discussions above touch it, the full picture of ЗОП чл.
-20, ал. 4's direct-award ("пряко възлагане") ceilings, below which **no**
-competitive procedure is legally required at all:
+A signed contract (`contractor_name` or `contract_date` present) whose
+`contract_value_eur` and `contract_value_bgn` are both None/0. Open tenders
+are not yet obliged to show a value. Legal anchor: ЗОП чл. 36, ал. 1, т. 12
+(the register publishes the contracts with their annexes). 0 open flags.
 
-| Category | Threshold |
-|---|---|
-| Строителство (construction) | 80 000 лв. (≈40,903 EUR) |
-| Услуги по приложение № 2 (Annex II services) | 100 000 лв. (≈51,129 EUR) |
-| Доставки и услуги извън тези по т. 2 (other) | 50 000 лв. (≈25,565 EUR) |
+### `near_threshold`
+
+**Checks:** one flag per EOP tender (`eop-tender:<УНП>`, open tenders
+included -- the estimate is known before the award): the estimated value
+(fallback: summed contract values) lies within 5% **below** the чл. 20
+boundary that the tender's own regime must stay under (e.g. an обява for
+supplies, boundary 100 000 лв. = 51,129 €). Open procedures and the
+negotiated family are skipped (no boundary to game). Only procedures
+announced on/after 2024-01-01 (when the verified values took effect).
+
+**Tier:** opacity / info by default (lawful, but the estimate's
+justification should be requested); **signal / warning** when one of the
+tender's contracts is also a member of a `splitting` group -- the
+explanation then says so. Legal anchor: ЗОП чл. 20, ал. 2-3; чл. 21, ал. 14
+(*"Изборът на метод за изчисляване на прогнозната стойност … не трябва да
+се използва за прилагане на ред за възлагане за по-ниски стойности."*).
+
+**Current:** 4 -- two works обяви at 148,275 € (= 290,000 лв., 3.3% under
+300,000 лв.), and two обяви for "5 броя паркомати" at 51,000 € (0.3% under
+100,000 лв.; the first, 00126-2026-0035, has no contract and was evidently
+relaunched as 00126-2026-0040).
+
+### `missing_monthly_report`
+
+Every month from 2019-01 to the month before last (relative to the run
+date) with no B1/B3 cash-execution report in `budget_reports` -> opacity /
+info, subject `report:YYYY-MM`. Wording is *"Не открихме публикуван месечен
+отчет…"*: the gap may be the scraper's, not the municipality's. Legal basis:
+ЗПФ чл. 133, ал. 1 and 4; ЗДОИ чл. 15, ал. 1, т. 7 (*"информация за бюджета
+и финансовите отчети на администрацията"*) and чл. 15а, ал. 4 (*"се
+публикува … в срок до три работни дни от … създаването на съответната
+информация"*); fine ЗПФ чл. 173. When `budget_reports` is empty the report
+rules do not run at all ("not scraped yet" is not "not published").
+Current: 41 (2022-04 .. 2025-12, minus the four Decembers that carry
+`missing_annual_report`).
+
+---
 
 ## Known limitations / honest caveats
 
-- **EOP/SIGMA overlap is not perfectly reconciled.** ~87% of EOP contracts
-  have a same-EIK-same-value SIGMA counterpart; the remainder sometimes
-  carry *different* recorded values for what looks like the same
-  tender/lot. `ContractorConcentrationRule` sidesteps this by using EOP
-  only; other rules either use one source for field-availability reasons or
-  (matching) draw on both deliberately for recall, not summation.
-- **`UnmatchedSpendingRule` will miss some real matches** where a budget
-  object's generic description (e.g. "СУ гр.Несебър") and a contract's
-  specific one (e.g. "СУ „Любен Каравелов”") refer to the same thing without
-  enough shared vocabulary to clear the matcher's bar. This is treated as an
-  acceptable false negative, not a bug to chase: the rule's hedged message
-  is written to be true even then ("may be described differently"), and the
-  alternative -- loosening the matcher until it also catches these -- was
-  tried and made the matcher accept nearly everything (see above).
-- **`PlanJumpRule` checks every historical month-over-month transition**,
-  not just the latest one, so re-running `analyze` on unchanged historical
-  data keeps "updating" (not newly creating) the same handful of past-jump
-  flags indefinitely. This is intentional -- they're historical facts, not
-  conditions that should silently disappear -- but it does mean they never
-  auto-resolve.
+- **Pre-2024 ЗОП thresholds are not in our local law text.** `splitting`
+  applies the current (2024) boundaries to every year; `near_threshold`
+  skips pre-2024 procedures. If the earlier boundaries were lower (as
+  generally reported, unverified locally), `splitting` under-detects for
+  2020-2023; it cannot over-detect for that reason.
+- **Annex 2 services are approximated by CPV prefix.** A mis-classified
+  service changes which boundaries apply.
+- **Contract duration is not in the data**, so `splitting` cannot tell a
+  12-month renewal from a divided need directly; the 300-day renewal gap is a
+  heuristic (documented above). A need divided into parts signed > 300 days
+  apart is missed.
+- **Register data errors exist** (values in stotinki, unit-price sums as
+  "contract value", currency codes that disagree). `annex_*` has explicit
+  guards; `bid_at_ceiling` caps the ratio at 1.05; other rules may still
+  inherit such errors.
+- **Grounds for exceptional procedures are not stored** -- the Решение's
+  motives section is not in `raw_json`, so `exceptional_procedure` cannot
+  tell a well-motivated negotiation from a baseless one (except the
+  commodity-exchange/fuel heuristic). That is exactly why it is a *signal*.
+- **EOP/SIGMA overlap is reconciled only by УНП + EIK.** Twins with a
+  missing EIK are not linked; `bids_received` is then "unknown".
+- **`unmatched_spending` will miss some real matches** where a budget
+  object's generic description and a contract's specific one refer to the
+  same thing without enough shared vocabulary -- an accepted false negative
+  (the matcher was tuned for precision; loosening it made it accept nearly
+  everything).
+- **`plan_jump` checks every historical transition**, so its flags never
+  auto-resolve -- they are historical facts.
+- **Budget-report gaps are partly our coverage**: 2022-04..2025-12 are
+  missing from `budget_reports` while a background download of the
+  municipality's archive is still running; re-run `analyze` afterwards and
+  the corresponding `missing_*_report` flags resolve automatically.

@@ -132,6 +132,74 @@ def severity_label(severity: str | None) -> str:
     return SEVERITY_LABELS[severity_key(severity)]
 
 
+#: Citizen-facing "tier" of a flag -- a coarser, plain-language read of how
+#: confident the flag is, independent of (though loosely correlated with)
+#: `severity`. `violation`: a direct mismatch with the law, visible from the
+#: data alone. `signal`: a pattern consistent with an irregularity that needs
+#: documents to confirm one way or the other. `opacity`: legal as far as the
+#: data shows, but not independently verifiable without more documents.
+#: The `tier` column itself is being added to `Flag` by a concurrent
+#: workstream; until it exists/is populated, `_tier_key()` below falls back
+#: to a per-rule guess, then to severity -- see its docstring.
+TIER_ORDER = ("violation", "signal", "opacity")
+TIER_LABELS = {"violation": "Нарушение", "signal": "Сигнал", "opacity": "Непрозрачност"}
+TIER_TOOLTIPS = {
+    "violation": "Пряко несъответствие със закона, видимо от данните",
+    "signal": "Модел, съвместим с нередност; нужни са документи",
+    "opacity": "Законно, но непроверимо без допълнителни документи",
+}
+
+#: Best-effort tier for a flag whose `tier` column is missing/NULL (older DB
+#: schema, or a rule the concurrent tier-tagging pass hasn't reached yet),
+#: keyed by rule name. Covers both the rules live in this DB today and the
+#: additional rule names named in the current task brief, so the UI reads
+#: sensibly the moment those rules start producing flags too. A real `tier`
+#: value on the row always wins over this guess.
+_TIER_FALLBACK_BY_RULE: dict[str, str] = {
+    "late_publication": "violation",
+    "missing_value": "violation",
+    "annex_over_cap": "violation",
+    "missing_annual_report": "violation",
+    "annex_growth": "signal",
+    "plan_jump": "signal",
+    "overspend_vs_plan": "signal",
+    "single_bidder": "signal",
+    "contractor_concentration": "signal",
+    "splitting": "signal",
+    "exceptional_procedure": "signal",
+    "short_offer_deadline": "signal",
+    "bid_at_ceiling": "signal",
+    "near_threshold": "signal",
+    "eu_funded_irregularity": "signal",
+    "unmatched_spending": "opacity",
+    "missing_quantity": "opacity",
+    "price_unverifiable": "opacity",
+    "unplanned_spending": "opacity",
+    "missing_monthly_report": "opacity",
+}
+#: Severity -> tier, used only when neither a real `tier` value nor a
+#: per-rule guess above is available (e.g. a brand-new rule name).
+_TIER_FALLBACK_BY_SEVERITY = {"high": "violation", "warning": "signal", "info": "opacity"}
+
+
+def tier_key(tier: str | None, rule: str | None = None, severity: str | None = None) -> str:
+    """Resolve any (possibly missing) `tier` value to one of TIER_ORDER."""
+    t = (tier or "").strip().lower()
+    if t in TIER_ORDER:
+        return t
+    if rule and rule in _TIER_FALLBACK_BY_RULE:
+        return _TIER_FALLBACK_BY_RULE[rule]
+    return _TIER_FALLBACK_BY_SEVERITY[severity_key(severity)]
+
+
+def tier_label(tier: str | None, rule: str | None = None, severity: str | None = None) -> str:
+    return TIER_LABELS[tier_key(tier, rule, severity)]
+
+
+def tier_tooltip(tier: str | None, rule: str | None = None, severity: str | None = None) -> str:
+    return TIER_TOOLTIPS[tier_key(tier, rule, severity)]
+
+
 def site_path(href: str | None) -> str:
     """Strip a leading '../' from a subject href built relative to a
     first-level page (e.g. '../contracts/1.html' -> 'contracts/1.html'), so
@@ -323,7 +391,7 @@ def _match_sigma(
 
 def _build_contracts(
     session: Session, flag_rows: list[Any]
-) -> tuple[list[ContractView], dict[str, int], dict[int, list[Any]]]:
+) -> tuple[list[ContractView], dict[str, int], dict[int, list[Any]], dict[int, Procurement]]:
     eop_rows = list(session.scalars(select(Procurement).where(Procurement.source == "eop")))
     sigma_rows = list(session.scalars(select(Procurement).where(Procurement.source == "sigma")))
 
@@ -382,7 +450,7 @@ def _build_contracts(
         key=lambda c: (c.contract_date or c.published_at or _NAIVE_MIN),
         reverse=True,
     )
-    return contracts, stats, flags_by_proc_id
+    return contracts, stats, flags_by_proc_id, match_by_eop_id
 
 
 @dataclass
@@ -756,6 +824,243 @@ def _load_flags_safe(session: Session) -> list[Any]:
     return rows
 
 
+#: Bulgarian label + value-formatting hint for the `details_json` keys this
+#: project's rules are known to emit (see docs/RULES.md). Rendered as a small
+#: definition list on the flags index/detail pages -- the raw JSON itself is
+#: never shown to a reader. Any key not listed here still renders (with a
+#: humanised fallback label), so a new rule's details never silently vanish.
+_DETAIL_LABELS: dict[str, str] = {
+    "contract_date": "Дата на договора",
+    "ted_publish_date": "Дата на публикуване",
+    "deadline_days": "Срок по закон",
+    "days_late": "Закъснение",
+    "paragraph": "Параграф",
+    "period": "Период",
+    "plan_current": "План",
+    "spent_period": "Похарчено",
+    "spent_prior": "Похарчено преди периода",
+    "estimated_total": "Обща стойност на обекта",
+    "over_plan": "Над плана",
+    "over_estimate": "Над общата стойност",
+    "from_period": "От период",
+    "to_period": "До период",
+    "plan_before": "План преди",
+    "plan_after": "План след",
+    "increase_eur": "Увеличение",
+    "increase_pct": "Увеличение",
+    "direct_award_threshold_eur": "Праг за пряко възлагане",
+    "min_value_eur": "Минимален праг за проверка",
+    "original_value_eur": "Първоначална стойност",
+    "current_value_eur": "Текуща стойност",
+    "growth_pct": "Ръст спрямо първоначалната стойност",
+    "contract_value_eur": "Стойност на договора",
+    "bids_received": "Брой подадени оферти",
+    "quantity_found_in": "Количество е открито в",
+    "first_period": "Първи отчетен период за обекта",
+    "dataset_first_period": "Начало на наличните данни",
+    "initial_plan": "Начален план",
+    # Rules added 2026-10-07 (splitting, annex_over_cap, exceptional_procedure,
+    # short_offer_deadline, bid_at_ceiling, near_threshold, unplanned_spending,
+    # missing_monthly_report, missing_annual_report, eu_funded_irregularity,
+    # price_unverifiable) -- same "small labelled list" treatment.
+    "tender_number": "Номер на процедурата",
+    "procedure_label": "Вид процедура",
+    "estimated_value_eur": "Прогнозна стойност",
+    "ratio": "Съотношение цена/прогнозна стойност",
+    "cap_ratio": "Дял от законовия таван (чл. 116, ал. 2)",
+    "commodity_exchange_mentioned": "Стокова борса",
+    "fuel_cpv": "CPV код за гориво",
+    "year": "Година",
+    "expected_period": "Очакван период",
+    "due_date": "Краен срок",
+    "kinds_checked": "Проверени видове отчети",
+    "type_of_contract": "Вид поръчка",
+    "description_chars": "Дължина на описанието",
+    "min_description_chars": "Очаквана минимална дължина",
+    "reasons": "Причини",
+    "category": "Категория",
+    "value_eur": "Стойност",
+    "value_basis": "База на стойността",
+    "boundary_eur": "Праг по закон",
+    "gap_pct": "Разлика до прага",
+    "notice_date": "Дата на обявлението",
+    "with_splitting_evidence": "Данни за разделяне на поръчка",
+    "sum_eur": "Обща сума на свързаните поръчки",
+    "required_regime": "Изискван ред по закон",
+    "window_days": "Прозорец на проверката",
+    "first_date": "Първа дата",
+    "last_date": "Последна дата",
+    "over_plan_eur": "Над плана с",
+    "other_rules": "Други сигнали за същия обект",
+}
+#: Detail keys whose values are EUR amounts but whose name doesn't end in
+#: `_eur` (so the generic `key.endswith("_eur")` heuristic in
+#: `_format_detail_value` would otherwise miss them).
+_DETAIL_EUR_KEYS = {
+    "initial_plan", "plan_current", "spent_period", "spent_prior",
+    "estimated_total", "plan_before", "plan_after",
+}
+#: Keys that duplicate what's already shown elsewhere on the page (subject
+#: label, source system, ...), or are internal bookkeeping (ids/grouping
+#: keys/nested record lists) not meaningful read as a bare value -- skipped
+#: so the numbers list never repeats itself or leaks a raw identifier.
+_DETAIL_SKIP_KEYS = {
+    "object_name", "source", "source_id", "subject", "quantity_found_in",
+    "sigma_twin", "twin", "member_ids", "path", "group_key", "members",
+    "procedure_type",  # procedure_label is this same field, already human-readable
+    "boundary_bgn",  # boundary_eur is the same legal threshold, EUR-first project convention
+}
+_TYPE_OF_CONTRACT_LABELS = {1: "услуги", 2: "доставки", 3: "строителство"}
+_CATEGORY_LABELS = {"supplies": "доставки", "works": "строителство", "services": "услуги"}
+_VALUE_BASIS_LABELS = {"estimated": "прогнозна стойност", "contract": "стойност по договор"}
+_REASON_LABELS = {
+    "no_quantity": "без количество",
+    "no_technical_description": "без съдържателно техническо описание",
+    "no_unit_prices": "без единични цени",
+    "over_estimate": "над общата прогнозна стойност",
+    "over_plan": "над годишния план",
+}
+
+
+def _format_detail_value(key: str, value: Any) -> str | None:
+    """Format one `details_json` value for the citizen-facing numbers list.
+    Returns None for a value too structured to show as a single line (a
+    nested list of records, a dict) -- the caller skips that key entirely
+    rather than dumping raw JSON."""
+    if value is None:
+        return "—"
+    if isinstance(value, bool):
+        return "да" if value else "не"
+    if isinstance(value, dict):
+        return None
+    if isinstance(value, list):
+        if not value:
+            return None
+        if any(isinstance(v, (dict, list)) for v in value):
+            return None
+        if key == "reasons":
+            return ", ".join(_REASON_LABELS.get(str(v), str(v)) for v in value)
+        if key == "other_rules":
+            return ", ".join(RULE_LABELS.get(str(v), str(v)) for v in value)
+        return ", ".join(str(v) for v in value)
+    if key == "type_of_contract":
+        try:
+            return _TYPE_OF_CONTRACT_LABELS.get(int(value), str(value))
+        except (TypeError, ValueError):
+            return str(value)
+    if key == "value_basis":
+        return _VALUE_BASIS_LABELS.get(str(value), str(value))
+    if key == "category":
+        return _CATEGORY_LABELS.get(str(value), str(value))
+    if key in ("ratio", "cap_ratio"):
+        try:
+            return f"{float(value):.2f}"
+        except (TypeError, ValueError):
+            return str(value)
+    if key.endswith("_pct"):
+        try:
+            return f"{float(value):,.1f}%"
+        except (TypeError, ValueError):
+            return str(value)
+    if key.endswith("_eur") or key in _DETAIL_EUR_KEYS:
+        return fmt_eur(value)
+    if key.endswith("_bgn"):
+        return f"{fmt_num(value)} лв."
+    if key in ("period", "from_period", "to_period", "first_period", "dataset_first_period", "expected_period"):
+        return fmt_period(value)
+    if key in ("contract_date", "ted_publish_date", "due_date", "notice_date", "first_date", "last_date"):
+        return fmt_date(value)
+    if key.endswith("_days") or key == "window_days":
+        return f"{fmt_num(value)} дни"
+    if key == "year":
+        try:
+            return str(int(value))
+        except (TypeError, ValueError):
+            return str(value)
+    if key in ("description_chars", "min_description_chars"):
+        return f"{fmt_num(value)} знака"
+    if isinstance(value, (int, float)):
+        return fmt_num(value)
+    return str(value)
+
+
+def _detail_items(details: dict[str, Any] | None) -> list[tuple[str, str]]:
+    """`details_json` -> a small, human-labelled (label, value) list for a
+    definition list -- never the raw JSON blob. A value too structured to
+    render as one line (a nested list of records, a dict) is skipped rather
+    than dumped as raw JSON."""
+    if not isinstance(details, dict):
+        return []
+    items = []
+    for key, value in details.items():
+        if key in _DETAIL_SKIP_KEYS or value is None:
+            continue
+        formatted = _format_detail_value(key, value)
+        if formatted is None:
+            continue
+        label = _DETAIL_LABELS.get(key, key.replace("_", " ").capitalize())
+        items.append((label, formatted))
+    return items
+
+
+#: Fallback "which documents would settle this" list, used only when a flag's
+#: own `documents_json` (added by a concurrent workstream) is missing/empty --
+#: generic enough to be true for *any* flag of that subject type, specific
+#: enough to be a useful starting point for a ЗДОИ request.
+_DEFAULT_DOCUMENTS_BY_SUBJECT_TYPE: dict[str, list[str]] = {
+    "contract": [
+        "пълния текст на договора и всички анекси/допълнителни споразумения към него",
+        "документацията по процедурата (решение, обявление, протокол на комисията, мотиви за избор на изпълнител)",
+    ],
+    "procedure": [
+        "документацията по процедурата (решение, обявление, протокол на комисията)",
+    ],
+    "budget_object": [
+        "техническата спецификация/количествено-стойностната сметка за обекта",
+        "протокола от заседанието на Общинския съвет, с което е приет или изменен планът за обекта",
+    ],
+    "cash_paragraph": [
+        "разшифровка на разхода по конкретни документи (фактури, договори) по този параграф",
+    ],
+    "report": [
+        "пълния текст на съответния отчет/доклад и решението на Общинския съвет за приемането му",
+    ],
+}
+_DEFAULT_DOCUMENTS_FALLBACK = ["документите, на които се основава този сигнал"]
+
+
+def _zdoi_template(
+    rule_label: str,
+    message: str,
+    subject_line: str,
+    documents: list[str],
+) -> str:
+    """Plain-text ЗДОИ (Закон за достъп до обществена информация) request
+    template -- static text, no mailto/JS: the "Копирай текст за заявление"
+    box on a flag's permalink page just shows this in a <pre>."""
+    doc_lines = "\n".join(f"{i}. {d}" for i, d in enumerate(documents, start=1))
+    return (
+        "ДО\n"
+        "КМЕТА НА ОБЩИНА НЕСЕБЪР\n\n"
+        "ЗАЯВЛЕНИЕ\n"
+        "за достъп до обществена информация по Закона за достъп до обществена\n"
+        "информация (ЗДОИ)\n\n"
+        "От: [Вашето име], [адрес/имейл за кореспонденция]\n\n"
+        f"Относно: {subject_line}\n\n"
+        "Уважаеми господин/госпожо Кмет,\n\n"
+        "На основание чл. 24 и следващите от Закона за достъп до обществена "
+        "информация, моля да ми бъде предоставен достъп (копие на хартиен "
+        "носител / по електронен път / преглед на оригинала — моля отбележете "
+        "предпочитание) до следните документи:\n\n"
+        f"{doc_lines}\n\n"
+        f"Искането е свързано със следната констатация на „Бюджетен монитор "
+        f"Несебър“ ({rule_label}): {message}\n\n"
+        "Моля да ми бъде отговорено в законоустановения 14-дневен срок по чл. 28 "
+        "ЗДОИ.\n\n"
+        "Дата: __________                                   Подпис: __________\n"
+    )
+
+
 RULE_LABELS = {
     "late_publication": "Късно публикуване",
     "overspend_vs_plan": "Разход над плана",
@@ -766,39 +1071,432 @@ RULE_LABELS = {
     "annex_growth": "Нарастване чрез анекси",
     "missing_value": "Липсваща стойност",
     "missing_quantity": "Липсващо количество",
+    "splitting": "Възможно разделяне на поръчка",
+    "annex_over_cap": "Анекси над законовия таван",
+    "exceptional_procedure": "Възлагане без публично обявление",
+    "short_offer_deadline": "Кратък срок за оферти",
+    "bid_at_ceiling": "Цена на тавана без конкуренция",
+    "near_threshold": "Стойност точно под прага",
+    "unplanned_spending": "Разход извън бюджета",
+    "missing_monthly_report": "Липсващ месечен отчет",
+    "missing_annual_report": "Липсващ годишен отчет",
+    "eu_funded_irregularity": "Европейски средства със сигнал",
+    "price_unverifiable": "Цена, която не може да се провери",
 }
 
+#: The methodology page's "Правила за сигнали" section, as data rather than
+#: hardcoded prose: one entry per rule documented in docs/RULES.md, each with
+#: what it detects, its threshold(s), its legal basis and the documents a
+#: citizen would need to request to settle the question either way. `tier`
+#: is resolved through `tier_key()` (same fallback table used for real flags)
+#: so this list and the live flags page never disagree about a rule's tier.
+METHODOLOGY_RULES: list[dict[str, Any]] = [
+    # -- Violations: a clear legal breach on the face of the data ----------
+    {
+        "rule": "late_publication",
+        "tier": "violation",
+        "detects": "Обявлението за възложена поръчка е изпратено за публикуване твърде късно след "
+        "подписването на договора.",
+        "threshold": "Над 30 дни от подписването на договора до изпращането за публикуване; тежестта "
+        "расте с закъснението (над 14 дни — средна, над 60 дни — висока).",
+        "law_ref": "чл. 26, ал. 1, т. 1 ЗОП (обявлението за възлагане се изпраща до 30 дни след "
+        "сключване на договора); чл. 256а ЗОП (глоба при неизпращане в срок).",
+        "documents": [
+            "обявление за възложена поръчка с датата на изпращане за публикуване",
+            "договорът с датата на подписване",
+        ],
+    },
+    {
+        "rule": "annex_over_cap",
+        "tier": "violation",
+        "detects": "Текущата стойност на договор (след анекси) е нараснала с над 50% спрямо "
+        "първоначално подписаната — над законовия таван за натрупано увеличение.",
+        "threshold": "Ръст над 50% от първоначалната стойност; явни грешки в данните (напр. стойност, "
+        "въведена в стотинки) се изключват отделно.",
+        "law_ref": "чл. 116, ал. 2 ЗОП (увеличението на цената не може да надхвърля 50% от стойността "
+        "на основния договор); чл. 255, ал. 3 ЗОП (глоба при изменение без основание).",
+        "documents": [
+            "допълнителни споразумения (анекси) към договора",
+            "мотиви/обосновка за всяко изменение",
+            "обявления за изменение на договора",
+            "първоначалната документация с предвидените опции",
+        ],
+    },
+    {
+        "rule": "unplanned_spending",
+        "tier": "violation",
+        "detects": "По капиталов обект има плащания без одобрен годишен план, или надвишаващи общата "
+        "прогнозна стойност на обекта.",
+        "threshold": "Разход поне 10,000 € без план, или надвишаване на общата стойност с поне "
+        "10,000 €.",
+        "law_ref": "чл. 128, ал. 1 ЗПФ (забрана за разходи, непредвидени в годишния бюджет); чл. 102, "
+        "ал. 1 ЗПФ; чл. 124, ал. 2 ЗПФ (промените се одобряват от общинския съвет).",
+        "documents": [
+            "решение на общинския съвет за промяна на бюджета (чл. 124 ЗПФ)",
+            "фактури и платежни нареждания по обекта",
+            "договор(и) за изпълнение на обекта",
+            "актуализиран разчет за капиталовите разходи",
+        ],
+    },
+    {
+        "rule": "short_offer_deadline",
+        "tier": "violation",
+        "detects": "Срокът за подаване на оферти (или времето от изпращане на обявлението до "
+        "подписването на договора) е по-кратък от законовия минимум за избраната процедура.",
+        "threshold": "Под законовия минимум (напр. 30 дни при открита процедура, 20 при публично "
+        "състезание, 10 при обява) — нарушение; под минимума плюс 5-дневен марж за оценка — сигнал. "
+        "В тази база засега 0 отворени случая.",
+        "law_ref": "чл. 74, чл. 178, чл. 188 ЗОП (минимални срокове за подаване на оферти по вид "
+        "процедура).",
+        "documents": [
+            "обявлението с датата на изпращане/публикуване",
+            "офертите с датите на получаването им",
+            "мотиви за съкратен срок, ако има такъв",
+        ],
+    },
+    # -- Signals: a pattern consistent with misconduct, needs documents ----
+    {
+        "rule": "splitting",
+        "tier": "signal",
+        "detects": "Две или повече поръчки на един изпълнител или с близък предмет, всяка под прага за "
+        "по-строга процедура, но общо за 12 месеца го надхвърлят.",
+        "threshold": "Сборът надхвърля прага по ЗОП чл. 20 за реда, при който поръчките реално са "
+        "възложени; по-висока тежест при сума над 2× прага.",
+        "law_ref": "чл. 21, ал. 15 ЗОП (забрана за разделяне на поръчка с цел по-лек ред); чл. 20 ЗОП "
+        "(стойностни прагове); чл. 247, ал. 1 ЗОП (глоба).",
+        "documents": [
+            "докладни записки/заявки за възникване на потребността по всяка поръчка",
+            "обосновка на прогнозната стойност на всяка поръчка",
+            "годишен план-график на обществените поръчки",
+            "договорите и техническите спецификации",
+        ],
+    },
+    {
+        "rule": "exceptional_procedure",
+        "tier": "signal",
+        "detects": "Поръчка е възложена чрез преговори без предварително обявление или покана до "
+        "определени лица, вместо чрез публична процедура.",
+        "threshold": "Тежест по стойност на договора (над 100,000 € — средна, над 500,000 € — висока); "
+        "по-ниска, когато текстовете сочат доставка на гориво/стокова борса.",
+        "law_ref": "чл. 18, ал. 1, т. 13 и чл. 182, ал. 1 и 2 ЗОП; чл. 79, ал. 1 и 6 ЗОП; чл. 250а ЗОП "
+        "(глоба).",
+        "documents": [
+            "решение за откриване на процедурата с мотивите за избраното основание",
+            "покана(и) до поканените лица",
+            "протокол от преговорите",
+            "доказателства за основанието (напр. неотложност, изключителни права)",
+        ],
+    },
+    {
+        "rule": "bid_at_ceiling",
+        "tier": "signal",
+        "detects": "Цената по договора практически съвпада с максималната (прогнозна) стойност, "
+        "определена от самата община, при липсваща или неизвестна конкуренция.",
+        "threshold": "Стойност между 98% и 105% от прогнозната, с точно една подадена оферта или "
+        "неизвестен брой; над 100,000 € — средна тежест, над 500,000 € — висока.",
+        "law_ref": "чл. 21, ал. 1-2 ЗОП (прогнозната стойност се определя вкл. чрез пазарни проучвания); "
+        "чл. 2, ал. 2 ЗОП (забрана за ограничаване на конкуренцията).",
+        "documents": [
+            "обосновка на прогнозната стойност (пазарно проучване, получени оферти)",
+            "ценово предложение на изпълнителя",
+            "протокол на комисията с броя на подадените оферти",
+        ],
+    },
+    {
+        "rule": "single_bidder",
+        "tier": "signal",
+        "detects": "Договор е възложен след подадена само една оферта.",
+        "threshold": "Над 100,000 € (средна тежест) или над 500,000 € (висока тежест). Изисква брой "
+        "оферти от СИГМА — ЕОП не публикува това поле директно.",
+        "law_ref": "чл. 2, ал. 2 ЗОП (забрана за необосновано ограничаване на конкуренцията).",
+        "documents": [
+            "документация и техническа спецификация на поръчката",
+            "критерии за подбор и методика за оценка",
+            "протокол/доклад на комисията",
+            "решение за определяне на изпълнител",
+        ],
+    },
+    {
+        "rule": "contractor_concentration",
+        "tier": "signal",
+        "detects": "Един изпълнител концентрира голям дял от стойността на договорите на общината за "
+        "кратък период.",
+        "threshold": "3+ договора и 15%+ от общата стойност за последните ~24 месеца. В тази база "
+        "засега 0 отворени случая.",
+        "law_ref": "чл. 2, ал. 1, т. 1-2 ЗОП (равнопоставеност, свободна конкуренция).",
+        "documents": [
+            "списък на всички договори на общината с този изпълнител за периода",
+            "протоколите от съответните процедури по избор на изпълнител",
+        ],
+    },
+    {
+        "rule": "annex_growth",
+        "tier": "signal",
+        "detects": "Текущата стойност на договор (след анекси/допълнителни споразумения) е нараснала "
+        "спрямо първоначално подписаната.",
+        "threshold": "Над 10% ръст, но под 50% (над него се сигнализира като annex_over_cap) — доста "
+        "под законовия таван, затова е ранен сигнал, не твърдение за нарушение.",
+        "law_ref": "чл. 116, ал. 2 ЗОП (законов таван на натрупаното увеличение: 50% от стойността на "
+        "основния договор; тук се сигнализира много по-рано, при +10%).",
+        "documents": [
+            "допълнителни споразумения (анекси) към договора",
+            "мотиви/обосновка за всяко изменение",
+            "обявления за изменение на договора",
+            "първоначалната документация с предвидените опции",
+        ],
+    },
+    {
+        "rule": "overspend_vs_plan",
+        "tier": "signal",
+        "detects": "Разходът по капиталов обект с одобрен план надвишава годишния план с повече от "
+        "допустимото.",
+        "threshold": "Над 2% и над 10,000 € над плана (обекти без никакъв план, или над общата им "
+        "прогнозна стойност, се сигнализират отделно като unplanned_spending).",
+        "law_ref": "чл. 124, ал. 2 ЗПФ (промените по общинския бюджет се одобряват от общинския "
+        "съвет); чл. 125 ЗПФ (компенсирани промени).",
+        "documents": [
+            "решение на общинския съвет за промяна на бюджета (чл. 124 ЗПФ)",
+            "заповеди на кмета за компенсирани промени (чл. 125 ЗПФ)",
+            "фактури и платежни нареждания по обекта",
+            "актуализиран разчет за капиталовите разходи",
+        ],
+    },
+    {
+        "rule": "plan_jump",
+        "tier": "signal",
+        "detects": "Планът за капиталов обект скача рязко спрямо предходния месец, или нов обект се "
+        "появява „посред година“ с голям начален план.",
+        "threshold": "Над 50% и над 100,000 € ръст спрямо предходния месец; нов обект с начален план "
+        "над 250,000 €.",
+        "law_ref": "чл. 124, ал. 2 ЗПФ (промените по общинския бюджет се одобряват от общинския "
+        "съвет); чл. 22, ал. 2 ЗМСМА (разгласяване на решенията в 7-дневен срок).",
+        "documents": [
+            "решение на общинския съвет за актуализация на бюджета",
+            "докладна записка/мотиви към промяната",
+            "разчет за капиталовите разходи преди и след промяната",
+        ],
+    },
+    {
+        "rule": "unmatched_spending",
+        "tier": "signal",
+        "detects": "Разход по капиталов обект над прага за пряко възлагане, за който не е открит "
+        "съответстващ публикуван договор.",
+        "threshold": "Разход от поне ≈25,565 € (50,000 лв., чл. 20, ал. 4, т. 3 ЗОП), без автоматично "
+        "намерено съответствие в ЦАИС ЕОП/СИГМА.",
+        "law_ref": "чл. 20, ал. 4, т. 3 ЗОП (праг за директно възлагане на доставки/услуги: 50,000 "
+        "лв.).",
+        "documents": [
+            "договор(и) за изпълнение на обекта",
+            "документ за избора на изпълнител (процедура или пряко възлагане)",
+            "фактури и приемо-предавателни протоколи",
+        ],
+    },
+    {
+        "rule": "missing_annual_report",
+        "tier": "signal",
+        "detects": "За приключила година няма публикуван годишен отчет за изпълнението на бюджета.",
+        "threshold": "Повече от 3 месеца след края на годината (краен срок 31 март следващата) все "
+        "още няма отчет.",
+        "law_ref": "чл. 133, ал. 1 и ал. 4 ЗПФ; чл. 140, ал. 5 и ал. 6 ЗПФ (годишният отчет се приема "
+        "до 30 септември и се публикува на интернет страницата); чл. 173 ЗПФ (глоба).",
+        "documents": [
+            "отчет за касовото изпълнение на бюджета към 31.12. за годината",
+            "годишен отчет за изпълнението на бюджета",
+            "решение на общинския съвет за приемане на годишния отчет",
+            "отчет за сметките за средства от Европейския съюз за годината",
+        ],
+    },
+    {
+        "rule": "eu_funded_irregularity",
+        "tier": "signal",
+        "detects": "Договор, финансиран изцяло или частично с европейски средства, за който вече има "
+        "поне един друг сигнал на сайта.",
+        "threshold": "Прилага се само ако договорът вече носи друг сигнал (пряко, или като член на "
+        "група за разделяне на поръчка) — работи последна, върху резултата от всички други правила.",
+        "law_ref": "чл. 248а НК (не е сред текстовете в docs/law, цитиран по задание); докладване на "
+        "нередности пред управляващия орган на програмата и пред OLAF.",
+        "documents": [
+            "договор за безвъзмездна финансова помощ",
+            "доклади от проверки на управляващия орган",
+            "междинни и окончателни отчети по проекта",
+            "документите, посочени в другите сигнали за договора",
+        ],
+    },
+    # -- Opacity: lawful as far as the data shows, but unverifiable --------
+    {
+        "rule": "price_unverifiable",
+        "tier": "opacity",
+        "detects": "За доставка или строителство над 20,000 € няма публикувано количество, "
+        "съдържателно техническо описание, нито единични цени — само заглавие и обща сума.",
+        "threshold": "Стойност над 20,000 €; над 100,000 € — средна тежест.",
+        "law_ref": "чл. 48, ал. 1, т. 1 ЗОП (техническите спецификации позволяват точно определяне на "
+        "параметрите на предмета на поръчката); чл. 36, ал. 1, т. 12 ЗОП (публикуване на договорите с "
+        "приложенията към тях).",
+        "documents": [
+            "техническа спецификация",
+            "ценово предложение на изпълнителя с единични цени",
+            "фактури с количества и единични цени",
+            "приемо-предавателни протоколи",
+        ],
+    },
+    {
+        "rule": "missing_quantity",
+        "tier": "opacity",
+        "detects": "За доставка с публикувано описание (или за капиталов обект) не е посочено "
+        "количество, обем или брой — стойността не може да бъде проверена „на единица“.",
+        "threshold": "Над 20,000 € стойност/разход, без разпознато количество в заглавието или "
+        "описанието (освен при рамкови договори или доставки по заявка).",
+        "law_ref": "чл. 2, ал. 2 ЗОП; Приложение № 4, част В, т. 6 ЗОП (количество или стойност в "
+        "обявлението за възлагане).",
+        "documents": [
+            "техническа спецификация",
+            "ценово предложение на изпълнителя с единични цени",
+            "фактури с количества и единични цени",
+            "приемо-предавателни протоколи",
+        ],
+    },
+    {
+        "rule": "missing_value",
+        "tier": "opacity",
+        "detects": "Подписан договор, за който не е посочена стойност нито в лева, нито в евро.",
+        "threshold": "Договорът има изпълнител и/или дата на подписване, но стойността липсва или е "
+        "нула. В тази база засега 0 отворени случая.",
+        "law_ref": "чл. 36, ал. 1, т. 12 ЗОП (задължително съдържание на информацията за сключения "
+        "договор).",
+        "documents": [
+            "текста на самия договор, в частта за цената",
+            "обявлението за възлагане на поръчката",
+        ],
+    },
+    {
+        "rule": "near_threshold",
+        "tier": "opacity",
+        "detects": "Прогнозната стойност на поръчка е определена съвсем малко под прага, над който се "
+        "изисква по-строга процедура.",
+        "threshold": "До 5% под прага по ЗОП чл. 20; по-висока тежест (сигнал), ако поръчката е част "
+        "и от група за разделяне (splitting).",
+        "law_ref": "чл. 20, ал. 2-3 ЗОП (стойностни прагове); чл. 21, ал. 14 ЗОП (методът за "
+        "прогнозната стойност не се използва за прилагане на ред за по-ниски стойности).",
+        "documents": [
+            "обосновка на прогнозната стойност (пазарно проучване, получени оферти)",
+            "годишен план-график на обществените поръчки",
+            "документация на поръчката",
+        ],
+    },
+    {
+        "rule": "missing_monthly_report",
+        "tier": "opacity",
+        "detects": "За даден месец няма публикуван месечен отчет за касовото изпълнение на бюджета.",
+        "threshold": "Всеки месец без открит Б1/Б3 отчет в наличните данни (от 2019-01 насам).",
+        "law_ref": "чл. 133, ал. 1 и ал. 4 ЗПФ (ежемесечни отчети, публикувани на интернет "
+        "страницата); чл. 15, ал. 1, т. 7 и чл. 15а, ал. 4 ЗДОИ (публикуване до 3 работни дни); чл. "
+        "173 ЗПФ (глоба).",
+        "documents": [
+            "месечен отчет за касовото изпълнение на бюджета (Б1) за съответния месец",
+        ],
+    },
+]
+for _item in METHODOLOGY_RULES:
+    _item["tier_label"] = TIER_LABELS[_item["tier"]]
+del _item
 
-def _flag_view(flag: Any, contract_by_proc_id: dict[int, ContractView]) -> dict[str, Any]:
+
+def _flag_view(
+    flag: Any,
+    contract_by_proc_id: dict[int, ContractView],
+    sigma_proc_id_to_contract: dict[int, ContractView] | None = None,
+) -> dict[str, Any]:
+    # Defensive: later columns (subject_key/subject_type/subject_id/details_json/
+    # law_ref/tier/explanation/documents_json/first_seen_at/last_seen_at) may or
+    # may not exist yet on Flag -- never hard-depend on them (see _load_flags_safe).
+    law_ref = getattr(flag, "law_ref", None)
+    details = getattr(flag, "details_json", None)
+    if isinstance(details, str):
+        try:
+            details = json.loads(details)
+        except ValueError:
+            details = None
+    subject_type = getattr(flag, "subject_type", None)
+    subject_id = getattr(flag, "subject_id", None)
+
     subject_href = None
     subject_label = None
+    contract = None
     if flag.procurement_id is not None:
         contract = contract_by_proc_id.get(flag.procurement_id)
+        if contract is None and sigma_proc_id_to_contract:
+            # The flag's procurement_id points at a SIGMA row (e.g.
+            # single_bidder) rather than the eop row contracts/<id>.html is
+            # keyed on -- fall back to that SIGMA row's matched eop contract.
+            contract = sigma_proc_id_to_contract.get(flag.procurement_id)
         if contract is not None:
             subject_href = f"../contracts/{contract.source_id}.html"
             subject_label = contract.title or contract.source_id
-
-    # Defensive: later columns (subject_key/subject_type/subject_id/details_json/
-    # law_ref) may or may not exist yet on Flag -- never hard-depend on them.
-    law_ref = getattr(flag, "law_ref", None)
-    details_json = getattr(flag, "details_json", None)
-    subject_type = getattr(flag, "subject_type", None)
-    subject_id = getattr(flag, "subject_id", None)
     if subject_href is None and subject_type == "contractor" and subject_id:
         subject_href = f"../contractors/{subject_id}.html"
         subject_label = subject_id
+    if subject_href is None and subject_type == "budget_object" and isinstance(details, dict):
+        period = details.get("period") or details.get("to_period") or details.get("first_period")
+        if period:
+            subject_href = f"../budget/{period}.html"
+            subject_label = details.get("object_name") or subject_id
+
+    rule_label = RULE_LABELS.get(flag.rule, flag.rule)
+    severity = flag.severity
+    tier_raw = getattr(flag, "tier", None)
+    t_key = tier_key(tier_raw, flag.rule, severity)
+
+    explanation = getattr(flag, "explanation", None) or flag.message
+
+    documents_raw = getattr(flag, "documents_json", None)
+    if isinstance(documents_raw, str):
+        try:
+            documents_raw = json.loads(documents_raw)
+        except ValueError:
+            documents_raw = None
+    documents = (
+        list(documents_raw)
+        if documents_raw
+        else _DEFAULT_DOCUMENTS_BY_SUBJECT_TYPE.get(subject_type or "", _DEFAULT_DOCUMENTS_FALLBACK)
+    )
+
+    if subject_type == "budget_object" and isinstance(details, dict) and details.get("period"):
+        subject_line = f"{subject_label or rule_label}, период {fmt_period(details.get('period'))}"
+    elif contract is not None:
+        subject_line = (
+            f"договор № {contract.source_id} от {fmt_date(contract.contract_date)} "
+            f"с {contract.contractor_name or '—'}"
+        )
+    else:
+        subject_line = subject_label or rule_label
+
+    first_seen_at = getattr(flag, "first_seen_at", None) or flag.created_at
+    last_seen_at = getattr(flag, "last_seen_at", None) or flag.created_at
 
     return {
         "id": flag.id,
         "rule": flag.rule,
-        "rule_label": RULE_LABELS.get(flag.rule, flag.rule),
-        "severity": flag.severity,
+        "rule_label": rule_label,
+        "severity": severity,
+        "tier": tier_raw,
+        "tier_key": t_key,
+        "tier_label": TIER_LABELS[t_key],
+        "tier_tooltip": TIER_TOOLTIPS[t_key],
         "message": flag.message,
-        "created_at": flag.created_at,
+        "explanation": explanation,
         "law_ref": law_ref,
-        "details": details_json,
+        "documents": documents,
+        "details": details,
+        "detail_items": _detail_items(details),
+        "subject_type": subject_type,
         "subject_href": subject_href,
         "subject_label": subject_label,
+        "procurement_id": flag.procurement_id,
+        "created_at": flag.created_at,
+        "first_seen_at": first_seen_at,
+        "last_seen_at": last_seen_at,
+        "permalink_href": f"../flags/{flag.id}.html",
+        "zdoi_template": _zdoi_template(rule_label, flag.message, subject_line, documents),
     }
 
 
@@ -823,11 +1521,17 @@ def _make_env() -> Environment:
     env.filters["sevkey"] = severity_key
     env.filters["sevlabel"] = severity_label
     env.filters["sitepath"] = site_path
+    env.filters["tierkey"] = tier_key
+    env.filters["tierlabel"] = tier_label
+    env.filters["tiertip"] = tier_tooltip
     env.globals["fmt_eur"] = fmt_eur
     env.globals["fmt_num"] = fmt_num
     env.globals["fmt_pct"] = fmt_pct
     env.globals["severity_order"] = SEVERITY_ORDER
     env.globals["severity_labels"] = SEVERITY_LABELS
+    env.globals["tier_order"] = TIER_ORDER
+    env.globals["tier_labels"] = TIER_LABELS
+    env.globals["tier_tooltips"] = TIER_TOOLTIPS
     env.globals["repo_url"] = REPO_URL
     env.globals["rule_labels"] = RULE_LABELS
     return env
@@ -929,9 +1633,29 @@ def _export_cash(session: Session, data_dir: Path) -> None:
 
 
 def _export_flags(flags: list[dict[str, Any]], data_dir: Path) -> None:
-    serializable = []
-    for f in flags:
-        serializable.append({**f, "created_at": iso(f["created_at"])})
+    serializable = [
+        {
+            "id": f["id"],
+            "rule": f["rule"],
+            "rule_label": f["rule_label"],
+            "severity": f["severity"],
+            "tier": f["tier_key"],
+            "tier_label": f["tier_label"],
+            "message": f["message"],
+            "explanation": f["explanation"],
+            "law_ref": f["law_ref"],
+            "documents": f["documents"],
+            "details": f["details"],
+            "subject_type": f["subject_type"],
+            "subject_href": f["subject_href"],
+            "subject_label": f["subject_label"],
+            "permalink": f["permalink_href"].removeprefix("../"),
+            "created_at": iso(f["created_at"]),
+            "first_seen_at": iso(f["first_seen_at"]),
+            "last_seen_at": iso(f["last_seen_at"]),
+        }
+        for f in flags
+    ]
     (data_dir / "flags.json").write_text(
         json.dumps(serializable, ensure_ascii=False, indent=2, default=str), encoding="utf-8"
     )
@@ -961,7 +1685,9 @@ def build_site(out_dir: Path, db_url: str | None = None) -> None:
 
     with Session(engine) as session:
         all_flags_raw = _load_flags_safe(session)
-        contracts, sigma_stats, _flags_by_proc_id = _build_contracts(session, all_flags_raw)
+        contracts, sigma_stats, _flags_by_proc_id, match_by_eop_id = _build_contracts(
+            session, all_flags_raw
+        )
         contractors = _build_contractors(contracts)
         budget = _load_budget(session)
         budget_changes = _compute_period_changes(budget["periods"], budget["by_period"])
@@ -969,7 +1695,44 @@ def build_site(out_dir: Path, db_url: str | None = None) -> None:
         minfin = _load_minfin_indicators()
 
         contract_by_proc_id = {c.id: c for c in contracts}
-        flags = [_flag_view(f, contract_by_proc_id) for f in all_flags_raw]
+        # A flag's `procurement_id` may point at a *SIGMA* row (e.g.
+        # single_bidder, which needs SIGMA's bids_received) rather than the
+        # `eop` row contracts/<id>.html is built from. Since eop<->SIGMA
+        # matches are already resolved for the contracts pages, reuse that
+        # mapping so such a flag still links to its (matched) contract page
+        # instead of showing no subject link at all.
+        sigma_proc_id_to_contract = {
+            sigma_proc.id: contract_by_proc_id[eop_id]
+            for eop_id, sigma_proc in match_by_eop_id.items()
+            if eop_id in contract_by_proc_id
+        }
+        flags = [
+            _flag_view(f, contract_by_proc_id, sigma_proc_id_to_contract) for f in all_flags_raw
+        ]
+
+        # Re-attach the rendered flag *views* (tier/explanation/documents/
+        # permalink, not just the raw DB row) to the contracts that carry
+        # them, so contract_detail.html can show the same rich flag info as
+        # the flags index/permalink pages instead of a second representation.
+        flags_by_proc_id: dict[int, list[dict[str, Any]]] = defaultdict(list)
+        for f in flags:
+            if f["procurement_id"] is not None:
+                flags_by_proc_id[f["procurement_id"]].append(f)
+        for c in contracts:
+            c.flags = flags_by_proc_id.get(c.id, [])
+
+        # Budget-object flags (overspend_vs_plan, plan_jump, unmatched_spending,
+        # missing_quantity scope B, ...) aren't tied to a procurement_id -- they
+        # key on `details_json.period` (or `to_period` for plan_jump) instead,
+        # so budget/<period>.html can show "flags for this period's objects".
+        budget_flags_by_period: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        for f in flags:
+            if f["subject_type"] != "budget_object":
+                continue
+            details = f["details"] or {}
+            period = details.get("period") or details.get("to_period") or details.get("first_period")
+            if period:
+                budget_flags_by_period[period].append(f)
 
         _export_contracts(contracts, data_dir)
         _export_budget(session, data_dir)
@@ -998,13 +1761,16 @@ def build_site(out_dir: Path, db_url: str | None = None) -> None:
     latest_cash_period = cash["periods"][-1] if cash["periods"] else None
     latest_cash = cash["by_period"].get(latest_cash_period) if latest_cash_period else None
     severity_rank = {key: i for i, key in enumerate(SEVERITY_ORDER)}
-    # Newest first; flags from the same rules run share a timestamp, so the
-    # tie-break surfaces the most severe ones, then the most recent ids.
+    tier_rank = {key: i for i, key in enumerate(TIER_ORDER)}
+    # Violations first, then signals, then opacity flags; within a tier the
+    # most severe first, then the most recent. Flags from the same rules run
+    # share a timestamp, so recency is only the final tie-break.
     flags_ranked = sorted(
         flags,
         key=lambda f: (
-            -f["created_at"].timestamp() if f["created_at"] else float("inf"),
+            tier_rank[f["tier_key"]],
             severity_rank[severity_key(f["severity"])],
+            -f["created_at"].timestamp() if f["created_at"] else float("inf"),
             -(f["id"] or 0),
         ),
     )
@@ -1025,8 +1791,10 @@ def build_site(out_dir: Path, db_url: str | None = None) -> None:
             latest_flags.append(f)
     latest_flags.sort(key=flags_ranked.index)
     flag_severity_counts = {key: 0 for key in SEVERITY_ORDER}
+    flag_tier_counts = {key: 0 for key in TIER_ORDER}
     for f in flags:
         flag_severity_counts[severity_key(f["severity"])] += 1
+        flag_tier_counts[f["tier_key"]] += 1
 
     meta = {
         "generated_at": generated_at.isoformat(),
@@ -1065,6 +1833,7 @@ def build_site(out_dir: Path, db_url: str | None = None) -> None:
             "latest_flags": latest_flags,
             "flags_total": len(flags),
             "flag_severity_counts": flag_severity_counts,
+            "flag_tier_counts": flag_tier_counts,
             "first_year": year_rows[0]["year"] if year_rows else None,
             "last_year": year_rows[-1]["year"] if year_rows else None,
             "sigma_stats": sigma_stats,
@@ -1110,6 +1879,9 @@ def build_site(out_dir: Path, db_url: str | None = None) -> None:
             "changes": budget_changes.get(latest_budget_period, {}) if latest_budget_period else {},
             "other_units_count": budget["other_units_count"],
             "function_chart_items": _function_chart_items(latest_budget),
+            "budget_flags": (
+                budget_flags_by_period.get(latest_budget_period, []) if latest_budget_period else []
+            ),
         },
     )
     for period in budget["periods"]:
@@ -1122,6 +1894,7 @@ def build_site(out_dir: Path, db_url: str | None = None) -> None:
                 "data": budget["by_period"][period],
                 "changes": budget_changes.get(period, {}),
                 "function_chart_items": _function_chart_items(budget["by_period"][period]),
+                "budget_flags": budget_flags_by_period.get(period, []),
             },
         )
 
@@ -1151,8 +1924,14 @@ def build_site(out_dir: Path, db_url: str | None = None) -> None:
         {
             **base_ctx, "root": "../", "active": "flags", "flags": flags,
             "flag_severity_counts": flag_severity_counts,
+            "flag_tier_counts": flag_tier_counts,
         },
     )
+    for f in flags:
+        _write(
+            env, "flag_detail.html", out_dir / "flags" / f"{f['id']}.html",
+            {**base_ctx, "root": "../", "active": "flags", "f": f},
+        )
 
     # -- data ------------------------------------------------------
     _write(
@@ -1163,7 +1942,10 @@ def build_site(out_dir: Path, db_url: str | None = None) -> None:
     # -- methodology ------------------------------------------------------
     _write(
         env, "methodology.html", out_dir / "methodology.html",
-        {**base_ctx, "root": "", "active": "methodology", "sigma_stats": sigma_stats},
+        {
+            **base_ctx, "root": "", "active": "methodology", "sigma_stats": sigma_stats,
+            "methodology_rules": METHODOLOGY_RULES,
+        },
     )
 
 

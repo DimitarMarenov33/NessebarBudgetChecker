@@ -220,13 +220,30 @@ def analyze_command() -> None:
 
     table = Table(title="analyze summary")
     table.add_column("rule")
+    table.add_column("tier(s)")
+    table.add_column("open", justify="right")
     table.add_column("new", justify="right")
     table.add_column("updated", justify="right")
     table.add_column("resolved", justify="right")
     for rule_name in sorted(summary.counts):
         counts = summary.counts[rule_name]
-        table.add_row(rule_name, str(counts.new), str(counts.updated), str(counts.resolved))
+        tiers = ", ".join(f"{t} {n}" for t, n in sorted(counts.tiers.items())) or "-"
+        table.add_row(
+            rule_name,
+            tiers,
+            str(counts.produced),
+            str(counts.new),
+            str(counts.updated),
+            str(counts.resolved),
+        )
     console.print(table)
+
+    tier_table = Table(title="open flags by tier")
+    tier_table.add_column("tier")
+    tier_table.add_column("open", justify="right")
+    for tier_name in ("violation", "signal", "opacity"):
+        tier_table.add_row(tier_name, str(summary.tier_counts.get(tier_name, 0)))
+    console.print(tier_table)
     console.print(
         f"Total: {summary.total_new()} new, {summary.total_updated()} updated, "
         f"{summary.total_resolved()} resolved ({summary.flags_produced} flag(s) produced this run)."

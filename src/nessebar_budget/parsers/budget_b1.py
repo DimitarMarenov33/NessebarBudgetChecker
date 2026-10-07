@@ -40,7 +40,7 @@ decides (< 2026-01 -> BGN, >= 2026-01 -> EUR). Every monetary value is
 converted to EUR at parse time (2 dp, at the fixed 1 EUR = 1.95583 BGN
 rate); `extra_json` additionally records `original_currency`,
 `conversion_rate`, and (only when a conversion actually happened) the
-pre-conversion values under `extra_json["original"]`. `currency` is also
+the conversion rate under `extra_json["conversion_rate"]`. `currency` is also
 set on every row for forward-compatibility, even though the current
 `CashExecutionLine` table/`upsert_cash_execution_lines` helper has no
 `currency` column to persist it to (out of scope here -- see
@@ -195,8 +195,7 @@ def _row_values(row: pd.Series, original_currency: str) -> dict[str, float | Non
 def _currency_extra(original_currency: str, raw: dict[str, float | None]) -> dict[str, Any]:
     extra: dict[str, Any] = {"original_currency": original_currency}
     if original_currency != "EUR":
-        extra["conversion_rate"] = BGN_PER_EUR
-        extra["original"] = dict(raw)
+        extra["conversion_rate"] = BGN_PER_EUR  # raw BGN = EUR value × rate
     return extra
 
 

@@ -99,8 +99,22 @@ class Flag(Base):
     severity: Mapped[str] = mapped_column(String(16))
     message: Mapped[str] = mapped_column(Text)
 
-    #: What real-world thing this flag is about: 'contract' | 'procedure' |
-    #: 'budget_object' | 'cash_paragraph' | 'report'.
+    #: How to read this flag (the shared contract with the site):
+    #: 'violation' = clear legal breach on the face of the data;
+    #: 'signal' = pattern consistent with misconduct, needs documents;
+    #: 'opacity' = lawful but unverifiable -- documents should be requested.
+    tier: Mapped[str | None] = mapped_column(String(16), default=None)
+    #: 2-4 plain Bulgarian sentences for citizens: what we see, why it may
+    #: point to misconduct, what would make it innocent. `message` stays the
+    #: 1-2 sentence headline.
+    explanation: Mapped[str | None] = mapped_column(Text, default=None)
+    #: JSON list of Bulgarian document names to request under ЗДОИ (e.g.
+    #: "техническа спецификация", "приемо-предавателни протоколи").
+    documents_json: Mapped[list | None] = mapped_column(JSON, default=None)
+
+    #: What real-world thing this flag is about: 'contract' | 'contractor' |
+    #: 'contract_group' | 'procedure' | 'budget_object' | 'cash_paragraph' |
+    #: 'report'.
     subject_type: Mapped[str | None] = mapped_column(String(32), default=None)
     #: The subject's natural identifier (e.g. "eop:266822", or a budget
     #: object's paragraph+name).

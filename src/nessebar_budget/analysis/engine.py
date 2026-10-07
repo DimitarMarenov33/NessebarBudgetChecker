@@ -16,7 +16,8 @@ rule shapes (see that module's docstring):
   on `(rule, subject_key)` -- new subjects are inserted, previously-seen
   subjects are updated in place (severity/message/details refreshed,
   `last_seen_at` bumped), and subjects a rule no longer produces are marked
-  `resolved_at`. This is what the `analyze` CLI command calls.
+  `resolved_at`. Meta rules (`eu_funded_irregularity`) run last, over every
+  other rule's output. This is what the `analyze` CLI command calls.
 """
 
 from __future__ import annotations
@@ -35,18 +36,29 @@ from nessebar_budget.analysis.rules import (
     MissingValueRule,
     Rule,
     annex_growth_flags,
+    annex_over_cap_flags,
+    bid_at_ceiling_flags,
+    build_index,
     contractor_concentration_flags,
+    eu_funded_irregularity_flags,
+    exceptional_procedure_flags,
     late_publication_flags,
     missing_quantity_flags,
+    missing_report_flags,
     missing_value_flags,
+    near_threshold_flags,
     overspend_vs_plan_flags,
     plan_jump_flags,
+    price_unverifiable_flags,
+    short_offer_deadline_flags,
     single_bidder_flags,
+    splitting_flags,
     unmatched_spending_flags,
+    unplanned_spending_flags,
 )
 from nessebar_budget.analysis.thresholds import Thresholds, get_thresholds
 from nessebar_budget.db.budget_models import BudgetLineItem
-from nessebar_budget.db.models import Flag, Procurement
+from nessebar_budget.db.models import BudgetReport, Flag, Procurement
 
 #: Rules considered stable enough to run by default in the *legacy* minimal
 #: pipeline. PricePerUnitRule is deliberately excluded until reference price
@@ -89,6 +101,7 @@ def _procurement_to_dict(p: Procurement) -> dict[str, Any]:
         "source_id": p.source_id,
         "title": p.title,
         "procedure_type": p.procedure_type,
+        "cpv_code": p.cpv_code,
         "contractor_name": p.contractor_name,
         "contractor_eik": p.contractor_eik,
         "contract_value_eur": _as_float(p.contract_value_eur),
@@ -119,17 +132,23 @@ def _budget_row_to_dict(r: BudgetLineItem) -> dict[str, Any]:
 
 @dataclass
 class RuleCounts:
-    """new/updated/resolved flag counts for one rule, for one `analyze` run."""
+    """Counts for one rule, for one `analyze` run: flags produced this run,
+    and how many of those were new / updated rows, plus rows resolved."""
 
     new: int = 0
     updated: int = 0
     resolved: int = 0
+    produced: int = 0
+    #: tier -> flags produced this run (a rule can emit more than one tier).
+    tiers: dict[str, int] = field(default_factory=dict)
 
 
 @dataclass
 class AnalysisSummary:
     counts: dict[str, RuleCounts] = field(default_factory=dict)
     flags_produced: int = 0
+    #: tier -> flags produced this run, across all rules.
+    tier_counts: dict[str, int] = field(default_factory=dict)
 
     def total_new(self) -> int:
         return sum(c.new for c in self.counts.values())
@@ -141,21 +160,45 @@ class AnalysisSummary:
         return sum(c.resolved for c in self.counts.values())
 
 
-#: Every rule `run_full_analysis` runs, in the order they're executed. Used
-#: to scope which existing `Flag` rows are eligible to be auto-resolved (only
-#: flags from a rule we actually ran this pass, never flags from some other/
-#: future rule not part of this run).
+#: Every rule `run_full_analysis` runs, in execution order. Meta rules
+#: (`eu_funded_irregularity`) come last: they read every other rule's output.
+#: Also scopes which existing `Flag` rows are eligible to be auto-resolved
+#: (only flags from a rule we actually ran this pass).
 FULL_RULE_NAMES = (
     "missing_value",
     "late_publication",
     "annex_growth",
+    "annex_over_cap",
     "single_bidder",
     "contractor_concentration",
+    "exceptional_procedure",
+    "short_offer_deadline",
+    "bid_at_ceiling",
+    "splitting",
+    "near_threshold",
+    "price_unverifiable",
+    "missing_quantity",
+    "unplanned_spending",
     "overspend_vs_plan",
     "plan_jump",
     "unmatched_spending",
-    "missing_quantity",
+    "missing_monthly_report",
+    "missing_annual_report",
+    "eu_funded_irregularity",
 )
+
+
+def _year_end_objects(
+    objects: list[dict[str, Any]], periods: list[str]
+) -> list[dict[str, Any]]:
+    """Objects as of the latest reported period *of each year* in the data."""
+    last_by_year: dict[str, str] = {}
+    for period in periods:
+        year = period[:4]
+        if period > last_by_year.get(year, ""):
+            last_by_year[year] = period
+    year_end = set(last_by_year.values())
+    return [o for o in objects if o.get("period") in year_end]
 
 
 def _collect_flags(
@@ -163,8 +206,10 @@ def _collect_flags(
     objects: list[dict[str, Any]],
     thresholds: Thresholds,
     now: dt.datetime,
+    reports: list[tuple[str | None, str | None]] | None = None,
 ) -> list[dict[str, Any]]:
     eop_contracts = [c for c in contracts if c["source"] == "eop"]
+    index = build_index(contracts)
 
     periods = sorted({o["period"] for o in objects if o.get("period")})
     objects_history: dict[tuple[str | None, str], list[dict[str, Any]]] = defaultdict(list)
@@ -179,6 +224,7 @@ def _collect_flags(
     if periods:
         latest_period = periods[-1]
         objects_latest = [o for o in objects if o.get("period") == latest_period]
+    objects_year_end = _year_end_objects(objects, periods)
 
     match_candidates = [
         MatchCandidate(
@@ -191,21 +237,55 @@ def _collect_flags(
     ]
 
     flags: list[dict[str, Any]] = []
+    # --- contracts ---
     flags += missing_value_flags(contracts)
     flags += late_publication_flags(contracts, thresholds)
     flags += annex_growth_flags(contracts, thresholds)
+    flags += annex_over_cap_flags(contracts, thresholds)
     flags += single_bidder_flags(contracts, thresholds)
     # Concentration is computed over a de-duplicated contract universe (EOP
     # only) -- see contractor_concentration_flags' docstring.
     flags += contractor_concentration_flags(eop_contracts, thresholds, now=now)
+    flags += exceptional_procedure_flags(contracts, thresholds, index)
+    flags += short_offer_deadline_flags(contracts, thresholds)
+    flags += bid_at_ceiling_flags(contracts, thresholds, index)
+    split = splitting_flags(contracts, thresholds)
+    flags += split
+    split_members = {m for f in split for m in f["details_json"]["member_ids"]}
+    flags += near_threshold_flags(contracts, thresholds, splitting_member_ids=split_members)
+    flags += price_unverifiable_flags(contracts, thresholds)
+    flags += missing_quantity_flags(contracts, objects_latest, thresholds)
+    # --- budget ledger ---
+    flags += unplanned_spending_flags(objects_year_end, thresholds)
     flags += overspend_vs_plan_flags(objects_latest, thresholds)
     if dataset_first_period is not None:
         flags += plan_jump_flags(
             objects_history, thresholds, dataset_first_period=dataset_first_period
         )
     flags += unmatched_spending_flags(objects_latest, match_candidates, thresholds)
-    flags += missing_quantity_flags(contracts, objects_latest, thresholds)
+    # --- publication of budget reports ---
+    # Only when at least one report is known: an empty `budget_reports` means
+    # "not scraped yet", not "the municipality published nothing".
+    if reports:
+        flags += missing_report_flags(reports, thresholds, now=now)
+    # --- meta rules: always last ---
+    flags += eu_funded_irregularity_flags(flags, index)
     return flags
+
+
+def _apply(flag: Flag, hit: dict[str, Any], now: dt.datetime) -> None:
+    """Refresh every rule-owned column of `flag` from `hit`."""
+    flag.severity = hit["severity"]
+    flag.message = hit["message"]
+    flag.tier = hit.get("tier")
+    flag.explanation = hit.get("explanation")
+    flag.documents_json = hit.get("documents_json")
+    flag.subject_type = hit.get("subject_type")
+    flag.subject_id = hit.get("subject_id")
+    flag.procurement_id = hit.get("procurement_id")
+    flag.details_json = hit.get("details_json")
+    flag.law_ref = hit.get("law_ref")
+    flag.last_seen_at = now
 
 
 def _upsert_flags(
@@ -224,35 +304,30 @@ def _upsert_flags(
     for hit in flags:
         rule = hit["rule"]
         subject_key = hit["subject_key"]
+        if subject_key in produced_keys[rule]:
+            continue  # a rule emitting the same subject twice keeps the first
         produced_keys[rule].add(subject_key)
+        rule_counts = counts.setdefault(rule, RuleCounts())
+        rule_counts.produced += 1
+        tier = hit.get("tier") or "?"
+        rule_counts.tiers[tier] = rule_counts.tiers.get(tier, 0) + 1
 
         existing_flag = existing_by_key.get((rule, subject_key))
         if existing_flag is None:
-            session.add(
-                Flag(
-                    rule=rule,
-                    severity=hit["severity"],
-                    message=hit["message"],
-                    procurement_id=hit.get("procurement_id"),
-                    subject_type=hit.get("subject_type"),
-                    subject_id=hit.get("subject_id"),
-                    subject_key=subject_key,
-                    details_json=hit.get("details_json"),
-                    law_ref=hit.get("law_ref"),
-                    created_at=now,
-                    first_seen_at=now,
-                    last_seen_at=now,
-                )
+            new_flag = Flag(
+                rule=rule,
+                subject_key=subject_key,
+                created_at=now,
+                first_seen_at=now,
             )
-            counts[rule].new += 1
+            _apply(new_flag, hit, now)
+            session.add(new_flag)
+            existing_by_key[(rule, subject_key)] = new_flag
+            rule_counts.new += 1
         else:
-            existing_flag.severity = hit["severity"]
-            existing_flag.message = hit["message"]
-            existing_flag.details_json = hit.get("details_json")
-            existing_flag.law_ref = hit.get("law_ref")
-            existing_flag.last_seen_at = now
+            _apply(existing_flag, hit, now)
             existing_flag.resolved_at = None
-            counts[rule].updated += 1
+            rule_counts.updated += 1
 
     for flag in existing:
         if flag.subject_key is None or flag.resolved_at is not None:
@@ -287,7 +362,17 @@ def run_full_analysis(
     ]
     objects = [o for o in objects if o.pop("_row_type") == "object"]
 
-    flags = _collect_flags(contracts, objects, thresholds, now)
+    reports = [tuple(row) for row in session.execute(select(BudgetReport.period, BudgetReport.kind))]
+
+    flags = _collect_flags(contracts, objects, thresholds, now, reports=reports)
     counts = _upsert_flags(session, flags, FULL_RULE_NAMES, now)
 
-    return AnalysisSummary(counts=counts, flags_produced=len(flags))
+    tier_counts: dict[str, int] = defaultdict(int)
+    for rule_counts in counts.values():
+        for tier, n in rule_counts.tiers.items():
+            tier_counts[tier] += n
+    return AnalysisSummary(
+        counts=counts,
+        flags_produced=sum(c.produced for c in counts.values()),
+        tier_counts=dict(tier_counts),
+    )

@@ -12,6 +12,15 @@
 
   {% if flags %}
   <div class="stats stats--3 stats--compact" role="list">
+    {% for key in tier_order %}
+    <div class="stat" role="listitem" title="{{ tier_tooltips[key] }}">
+      <span class="stat__label"><span class="dot dot--{{ key }}" aria-hidden="true"></span>{{ tier_labels[key] }}</span>
+      <span class="stat__value"><span class="figure">{{ flag_tier_counts[key] | num }}</span></span>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="stats stats--3 stats--compact" role="list">
     {% for key in severity_order %}
     <div class="stat" role="listitem">
       <span class="stat__label"><span class="dot dot--{{ key }}" aria-hidden="true"></span>{{ severity_labels[key] }} тежест</span>
@@ -20,9 +29,21 @@
     {% endfor %}
   </div>
 
-  <section class="block" data-table-container>
+  <p class="footnote">
+    <span class="dot dot--violation" aria-hidden="true"></span> <strong>Нарушение</strong> — {{ tier_tooltips.violation }}.
+    <span class="dot dot--signal" aria-hidden="true"></span> <strong>Сигнал</strong> — {{ tier_tooltips.signal }}.
+    <span class="dot dot--opacity" aria-hidden="true"></span> <strong>Непрозрачност</strong> — {{ tier_tooltips.opacity }}.
+  </p>
+
+  <section class="block" data-flag-filters>
     <div class="toolbar">
       {{ m.search("Търси правило, съобщение, договор…") }}
+      <div class="segmented" role="group" aria-label="Филтър по ниво">
+        <button type="button" data-tier-filter="" aria-pressed="true">Всички</button>
+        <button type="button" data-tier-filter="violation" aria-pressed="false">Нарушения</button>
+        <button type="button" data-tier-filter="signal" aria-pressed="false">Сигнали</button>
+        <button type="button" data-tier-filter="opacity" aria-pressed="false">Непрозрачност</button>
+      </div>
       <label class="select">
         <span class="visually-hidden">Тежест</span>
         <select class="input" data-table-filter="severity" aria-label="Филтър по тежест">
@@ -43,30 +64,49 @@
       </label>
       {{ m.count(flags | length) }}
     </div>
-    <div class="table-wrap">
-    <table class="table table--flags table--stack" data-sortable data-filterable>
-      <thead>
-        <tr>
-          <th data-sort="none" class="col-sev">Тежест</th>
-          <th data-sort="none" class="col-rule">Правило</th>
-          <th>Съобщение</th>
-          <th class="col-subject">Свързано с</th>
-          <th data-sort="none" class="col-date">Дата</th>
-        </tr>
-      </thead>
-      <tbody>
+
+    <div class="flaglist">
       {% for f in flags %}
-      {% set key = f.severity | sevkey %}
-      <tr id="flag-{{ f.id }}" data-severity="{{ key }}" data-rule="{{ f.rule }}">
-        <td data-sort-value="{{ severity_order.index(key) }}">{{ m.sev_chip(f.severity) }}</td>
-        <td data-sort-value="{{ f.rule_label }}"><span class="chip">{{ f.rule_label }}</span></td>
-        <td class="msg">{{ f.message }}{% if f.law_ref %}<span class="sub">{{ f.law_ref }}</span>{% endif %}</td>
-        <td>{% if f.subject_href %}<a class="row-link clamp-2" href="{{ f.subject_href }}">{{ f.subject_label }}</a>{% else %}<span class="muted">—</span>{% endif %}</td>
-        <td class="nowrap muted" data-sort-value="{{ f.created_at.isoformat() if f.created_at else '' }}">{{ f.created_at | bgdate }}</td>
-      </tr>
+      <details class="flagrow" id="{{ f.id }}" data-flag-row data-tier="{{ f.tier_key }}" data-severity="{{ f.severity | sevkey }}" data-rule="{{ f.rule }}">
+        <summary class="issue flagrow__summary">
+          <span class="issue__sev">{{ m.sev_dot(f.severity) }}</span>
+          <span class="issue__rule"><span class="issue__chips">{{ m.chip(f.tier_label, f.tier_key) }}<span class="chip">{{ f.rule_label }}</span></span></span>
+          <span class="issue__msg">{{ f.message }}</span>
+          <time class="issue__date">{{ f.created_at | bgdate }}</time>
+          <span class="issue__chev">{{ m.chevron() }}</span>
+        </summary>
+        <div class="flagrow__panel">
+          <p>{{ f.explanation }}</p>
+          {% if f.law_ref %}
+          <div>
+            <span class="eyebrow">Правно основание</span>
+            <p>{{ f.law_ref }}</p>
+          </div>
+          {% endif %}
+          <div>
+            <span class="eyebrow">Документи за изискване</span>
+            <ul>
+              {% for d in f.documents %}<li>{{ d }}</li>{% endfor %}
+            </ul>
+          </div>
+          {% if f.detail_items %}
+          <div>
+            <span class="eyebrow">Числа</span>
+            <dl class="flagrow__numbers">
+              {% for label, value in f.detail_items %}
+              <div><dt>{{ label }}</dt><dd>{{ value }}</dd></div>
+              {% endfor %}
+            </dl>
+          </div>
+          {% endif %}
+          <p class="more">
+            {% if f.subject_href %}<a class="row-link" href="{{ root ~ (f.subject_href | sitepath) }}">{{ f.subject_label }}</a> ·
+            {% endif %}
+            <a class="link-arrow" href="{{ root ~ (f.permalink_href | sitepath) }}">Постоянна връзка към сигнала {{ m.chevron() }}</a>
+          </p>
+        </div>
+      </details>
       {% endfor %}
-      </tbody>
-    </table>
     </div>
   </section>
   {% else %}

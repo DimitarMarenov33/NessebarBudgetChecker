@@ -41,8 +41,9 @@ For CI/CD (GitHub Actions building and deploying this to Pages), see
 | `budget/index.html` | Latest-month capital ledger (consolidated `Общо` unit): plan vs. spent by function, month-over-month plan changes (new/increased objects), full object table. |
 | `budget/<period>.html` | Same breakdown for one historical month (e.g. `budget/2026-08.html`). |
 | `cash/index.html` | Cash execution (B1) YTD by expenditure paragraph, biggest categories, optional Minfin quarterly comparison (Nessebar vs. median of all municipalities) when the quarterly workbook parses cleanly. |
-| `flags/index.html` | All flags with severity, plain-language message, (when present) law reference and link to the flagged subject. Renders an empty state gracefully if no flags exist yet. |
-| `methodology.html` | Sources, update cadence, the eop/SIGMA dedupe heuristic, a plain-language summary of each anomaly rule (full depth in `docs/RULES.md`), and the "flags are not proof of wrongdoing" disclaimer. |
+| `flags/index.html` | All flags: a tier filter (segmented control: Всички / Нарушения / Сигнали / Непрозрачност) alongside severity/rule filters and search, tier+severity+rule chips per row, counts per tier and per severity. Each row is a native `<details>`/`<summary>` — no JS needed to expand it — revealing the explanation, legal basis, documents to request (ЗДОИ), and a small numbers list parsed out of `details_json` (never the raw JSON). Renders an empty state gracefully if no flags exist yet. |
+| `flags/<id>.html` | One permalink page per flag: title = rule label, tier + severity chips, message, explanation, legal basis, documents list, numbers, subject link, first/last-seen dates, a 3-step "Как да поискате документите" box, and a "Копирай текст за заявление" `<details>` with a static, pre-filled plain-text ЗДОИ request template (copy button via `static/app.js`). Linked from every flag row and from Telegram deep links `flags/#<id>` (the bare numeric `id` is the row's anchor on the index page too). |
+| `methodology.html` | Sources, update cadence, the eop/SIGMA dedupe heuristic, a "За какви нарушения следим" section (what misconduct the three tiers cover, in plain Bulgarian, incl. which Наказателен кодекс offences a *signal* may relate to once documents confirm it), a data-driven "Правила за сигнали" section (one entry per rule — label, tier, what it detects, thresholds, legal basis, suggested documents — built from `build.py`'s `METHODOLOGY_RULES`, content sourced from `docs/RULES.md`), "Какво можете да направите" (the ЗДОИ route and which bodies to signal — АДФИ, АОП, Сметна палата, managing authority/OLAF, prosecution only with evidence), and the "flags are not proof of wrongdoing" disclaimer. |
 | `data/index.html` | Links to every export below, plus a summary of current counts. |
 
 ## Data exports (`site/data/`)
@@ -52,7 +53,7 @@ For CI/CD (GitHub Actions building and deploying this to Pages), see
 | `contracts.csv` / `contracts.json` | One row per distinct `eop` procurement (514 at last build), with SIGMA enrichment columns (`bids_received`, `sigma_source_id`, `sigma_unp`, `sigma_eu_funded`) when a match was found. |
 | `budget_line_items.csv` | Every `budget_line_items` row, all months and units (not just the consolidated `Общо` one shown in the HTML pages), with `row_type` (`object` / `paragraph_subtotal` / `function_subtotal` / `grand_total`) pulled out of `extra_json`. |
 | `cash_execution.csv` | Every `cash_execution_lines` row, all months, both `приходи`/`разходи` sections. |
-| `flags.json` | All flags, with whatever optional columns (`law_ref`, `details_json`, ...) the live `flags` table currently has — see "Flag schema" below. |
+| `flags.json` | All flags: `tier`, `tier_label`, `severity`, `message`, `explanation`, `documents` (list), `law_ref`, `details`, `subject_href`/`subject_label`, `permalink`, and the usual timestamps — whatever optional columns the live `flags` table currently has, see "Flag schema" below. |
 | `meta.json` | Build timestamp, headline counts, and the SIGMA-match statistics also quoted in `methodology.html`. |
 
 ## Dedupe & enrichment: ЦАИС ЕОП + SIGMA
@@ -92,17 +93,36 @@ for `contractors/<slug>.html`. The contractor page then shows "ЕИК не е
 
 ## Flag schema (forward-compatible by design)
 
-`src/nessebar_budget/db/models.py`'s `Flag` model is being extended (by a
-concurrent workstream) with columns like `subject_type`, `subject_id`,
-`subject_key`, `details_json`, `law_ref`. Until a given DB file has actually
-been migrated to include them, `select(Flag)` (every *mapped* column) raises
-`OperationalError: no such column`. `build.py`'s `_load_flags_safe()` works
-around this by introspecting the live `flags` table and selecting only the
-columns that actually exist there right now — so the build never breaks
-whether it's running against the old or the new schema. Everywhere else,
-optional fields are read with `getattr(flag, "field", None)` and the
-templates render whatever is present (see `flags/index.html` and
-`contract_detail.html`).
+`src/nessebar_budget/db/models.py`'s `Flag` model carries (among others)
+`subject_type`, `subject_id`, `subject_key`, `details_json`, `law_ref`,
+`tier`, `explanation`, `documents_json`. Until a given DB file has actually
+been migrated to include a given column, `select(Flag)` (every *mapped*
+column) raises `OperationalError: no such column`. `build.py`'s
+`_load_flags_safe()` works around this by introspecting the live `flags`
+table and selecting only the columns that actually exist there right now —
+so the build never breaks whether it's running against an old or a new
+schema. Everywhere else, optional fields are read with
+`getattr(flag, "field", None)` and `_flag_view()` renders gracefully around
+whatever is missing:
+
+- **`tier`** missing/NULL: `tier_key()` falls back to a per-rule guess
+  (`_TIER_FALLBACK_BY_RULE`), then to severity — the tier filter/chips never
+  show an "unknown" bucket, but a real `tier` value always wins once present.
+- **`explanation`** missing/NULL: the flag's existing `message` is reused as
+  the explanation body.
+- **`documents_json`** missing/empty: a generic, subject-type-keyed document
+  list (`_DEFAULT_DOCUMENTS_BY_SUBJECT_TYPE`) stands in, specific enough to
+  be a reasonable ЗДОИ starting point.
+- **`details_json`** values are never dumped as raw JSON: `_detail_items()`
+  maps each key to a Bulgarian label and a formatted value (EUR/BGN/%/date/
+  period/day-count/boolean/known-code lookups in `_format_detail_value()`),
+  skipping bookkeeping keys and anything too structured (a nested list of
+  records, a dict) to show as one line.
+
+Every flag-rendering template (`flags_index.html`, `flag_detail.html`,
+`contract_detail.html`, `_budget_body.html`, the home page's `flag_row`
+macro) consumes the *same* `_flag_view()`-shaped dict, so tier chips,
+messages and permalinks are consistent everywhere a flag appears.
 
 ## Design
 
@@ -115,6 +135,11 @@ only for the primary button, progress bars, the latest chart bar and focus
 rings. Spacing scale 4/8/12/16/24/32/48/64/96/128; 8px radii; no shadows and
 no gradients except the faint radial glow behind the home hero. Severity is
 shown as a coloured dot + text (red/orange/grey), never a filled badge.
+Tier reuses the same pattern with its own three colours (`violation`/`signal`
+share the high/warning severity colours, `opacity` gets its own muted
+blue-grey `--tier-opacity`) — see `tier_key`/`tier_label`/`tier_tooltip` in
+`build.py` and the `.dot--violation`/`.dot--signal`/`.dot--opacity` rules in
+`static/style.css`.
 
 Type is Inter (Google Fonts, `system-ui` fallback) with tight tracking on
 headlines; every number uses `font-variant-numeric: tabular-nums`.

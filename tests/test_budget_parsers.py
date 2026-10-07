@@ -161,7 +161,8 @@ def test_capital_ledger_2021_bgn_conversion_known_cell(capital_result_2021_bgn):
     ]
     row = totals[0]
     assert row["currency"] == "EUR"
-    assert row["extra_json"]["original"]["estimated_total"] == pytest.approx(39380680)
+    assert row["extra_json"]["original_currency"] == "BGN"
+    assert row["extra_json"]["conversion_rate"] == pytest.approx(1.95583)
     assert row["estimated_total"] == pytest.approx(eur(39380680))
 
 
@@ -309,9 +310,9 @@ def test_b1_2020_bgn_conversion_known_cell(b1_result_2020_bgn):
     EUR (2 dp), with the raw BGN figure preserved in extra_json."""
     expenditure = [r for r in b1_result_2020_bgn["rows"] if r["section"] == "разходи" and r["paragraph"] == "100"]
     row = expenditure[0]
-    raw_bgn = row["extra_json"]["original"]["actual_total"]
-    assert raw_bgn and raw_bgn > 0
-    assert row["actual_ytd"] == pytest.approx(eur(raw_bgn))
+    assert row["extra_json"]["original_currency"] == "BGN"
+    assert row["extra_json"]["conversion_rate"] == pytest.approx(1.95583)
+    assert row["actual_ytd"] and row["actual_ytd"] > 0
     assert row["currency"] == "EUR"
 
 

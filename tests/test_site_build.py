@@ -16,7 +16,7 @@ from decimal import Decimal
 from pathlib import Path
 
 import pytest
-from sqlalchemy import create_engine, func, select
+from sqlalchemy import create_engine, func, select, text
 from sqlalchemy.orm import Session
 
 from nessebar_budget.db.models import Procurement
@@ -176,6 +176,38 @@ def test_flags_page_renders_without_flag_schema_columns(built_site: Path) -> Non
     assert "Сигнали" in html
 
 
+@requires_db
+def test_flags_index_renders_tier_filter(built_site: Path) -> None:
+    """flags/index.html must offer the tier segmented control (Всички /
+    Нарушения / Сигнали / Непрозрачност) alongside the severity/rule filters,
+    and show a tier chip on each row -- this must hold even when the live
+    `flags` table doesn't have a `tier` column yet (tier_key()'s fallback)."""
+    html = (built_site / "flags" / "index.html").read_text(encoding="utf-8")
+    assert 'data-tier-filter=""' in html
+    assert 'data-tier-filter="violation"' in html
+    assert 'data-tier-filter="signal"' in html
+    assert 'data-tier-filter="opacity"' in html
+    assert "Нарушения" in html and "Сигнали" in html and "Непрозрачност" in html
+    assert "data-flag-row" in html
+    assert 'data-tier="' in html
+
+
+@requires_db
+def test_flag_permalink_page_exists_for_a_flag_in_the_db(built_site: Path) -> None:
+    """Every flag in the DB gets its own permalink page flags/<id>.html, and
+    that page renders the explanation/documents/how-to-request sections."""
+    engine = create_engine(f"sqlite:///{DEFAULT_DB_PATH}")
+    with Session(engine) as session:
+        flag_id = session.execute(text("SELECT id FROM flags LIMIT 1")).scalar_one()
+
+    flag_page = built_site / "flags" / f"{flag_id}.html"
+    assert flag_page.exists(), f"missing flags/{flag_id}.html"
+    html = flag_page.read_text(encoding="utf-8")
+    assert "Документи за изискване" in html
+    assert "Как да поискате документите" in html
+    assert "ЗДОИ" in html
+
+
 #: An amount grouped with spaces / thin spaces (the pre-redesign format),
 #: e.g. "220 000 €" -- every rendered number must use commas now.
 SPACE_GROUPED_RE = re.compile(r"\d[ \u2009\u202f\u00a0]\d{3}(?:\D|$)")
@@ -245,7 +277,8 @@ def test_pages_do_not_scroll_horizontally_on_phone(built_site: Path) -> None:
     contract_page = _first((built_site / "contracts").glob("*.html"))
     contractor_page = _first((built_site / "contractors").glob("*.html"))
     budget_period_page = _first((built_site / "budget").glob("*.html"))
-    assert contract_page and contractor_page and budget_period_page
+    flag_page = _first((built_site / "flags").glob("*.html"))
+    assert contract_page and contractor_page and budget_period_page and flag_page
 
     pages = [
         "index.html",
@@ -257,6 +290,7 @@ def test_pages_do_not_scroll_horizontally_on_phone(built_site: Path) -> None:
         "cash/index.html",
         "flags/index.html",
         contract_page.relative_to(built_site).as_posix(),
+        flag_page.relative_to(built_site).as_posix(),
         "methodology.html",
     ]
 

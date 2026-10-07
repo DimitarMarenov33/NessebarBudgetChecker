@@ -27,6 +27,28 @@
   </div>
 </div>
 
+{% if budget_flags %}
+<section class="block">
+  <div class="block__head">
+    <h2 class="block__title">Сигнали за тази справка</h2>
+    <p class="block__sub">Автоматично откроени несъответствия по обекти от капиталовата програма за {{ period | period }}.</p>
+  </div>
+  <ul class="issues">
+    {% for f in budget_flags %}
+    <li>
+      <a class="issue" href="{{ root ~ (f.permalink_href | sitepath) }}">
+        <span class="issue__sev">{{ m.sev_dot(f.severity) }}</span>
+        <span class="issue__rule"><span class="issue__chips">{{ m.chip(f.tier_label, f.tier_key) }}<span class="chip">{{ f.rule_label }}</span></span></span>
+        <span class="issue__msg">{{ f.message }}</span>
+        <time class="issue__date">{{ f.created_at | bgdate }}</time>
+        <span class="issue__chev">{{ m.chevron() }}</span>
+      </a>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
 <section class="block">
   <div class="block__head">
     <h2 class="block__title">По функции</h2>

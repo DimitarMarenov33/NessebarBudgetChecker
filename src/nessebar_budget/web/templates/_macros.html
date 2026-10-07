@@ -48,20 +48,26 @@
 <svg class="chevron" width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M5.25 3.5 8.75 7l-3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
 {%- endmacro %}
 
-{# One compact flag row (home page, contract detail). The whole row links
-   to the flagged subject when known, otherwise to the flag's anchor on the
-   flags page. #}
+{# One compact flag row (home page, contract detail, budget period pages).
+   The whole row links to the flagged subject when known, otherwise to the
+   flag's own permalink page (flags/<id>.html). #}
 {% macro flag_row(f, root) -%}
-{%- set href = (root ~ (f.subject_href | sitepath)) if f.subject_href else (root ~ "flags/index.html#flag-" ~ f.id) -%}
+{%- set href = (root ~ (f.subject_href | sitepath)) if f.subject_href else (root ~ (f.permalink_href | sitepath)) -%}
 <li>
   <a class="issue" href="{{ href }}">
     <span class="issue__sev">{{ sev_dot(f.severity) }}</span>
-    <span class="issue__rule"><span class="chip">{{ f.rule_label }}</span></span>
+    <span class="issue__rule"><span class="issue__chips">{{ chip(f.tier_label, f.tier_key) }}<span class="chip">{{ f.rule_label }}</span></span></span>
     <span class="issue__msg">{{ f.message }}</span>
     <time class="issue__date">{{ f.created_at | bgdate }}</time>
     <span class="issue__chev">{{ chevron() }}</span>
   </a>
 </li>
+{%- endmacro %}
+
+{# Tier as a subtle chip: coloured dot + text ("Нарушение"/"Сигнал"/
+   "Непрозрачност"), with the tier's short legend text as a native tooltip. #}
+{% macro tier_chip(f) -%}
+<span class="chip chip--plain" title="{{ f.tier_tooltip }}"><span class="dot dot--{{ f.tier_key }}" aria-hidden="true"></span>{{ f.tier_label }}</span>
 {%- endmacro %}
 
 {# Search field + optional count, used above every filterable table. #}

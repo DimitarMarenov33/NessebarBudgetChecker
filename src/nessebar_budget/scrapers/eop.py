@@ -374,8 +374,6 @@ def _build_notices(detail: dict[str, Any] | None) -> tuple[list[dict[str, Any]],
                 "notice_type": parsed["notice_type"],
                 "cpv_main": parsed["cpv_main"],
                 "cpv_codes": parsed["cpv_codes"],
-                "short_description": parsed["short_description"],
-                "lot_descriptions": parsed["lot_descriptions"],
                 "estimated_value": parsed["estimated_value"],
             }
         )

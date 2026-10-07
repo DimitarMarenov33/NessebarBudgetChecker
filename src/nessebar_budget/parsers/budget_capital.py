@@ -55,7 +55,7 @@ rate on 2026-01-01). The workbook's own currency marker is used when present
 (< 2026-01 -> BGN, >= 2026-01 -> EUR). `currency` is always stored as
 "EUR"; `extra_json` additionally records `original_currency`,
 `conversion_rate`, and (when a conversion actually happened) the
-pre-conversion values under `extra_json["original"]`.
+the conversion rate under `extra_json["conversion_rate"]` (raw values are not duplicated).
 """
 
 from __future__ import annotations
@@ -356,13 +356,8 @@ def parse_sheet(ws, period: str, original_currency: str) -> list[dict[str, Any]]
 
         extra: dict[str, Any] = {"row_type": row_type, "original_currency": original_currency}
         if original_currency != "EUR":
+            # Raw BGN figures are not stored: they equal the EUR value × rate.
             extra["conversion_rate"] = rate
-            extra["original"] = {
-                "estimated_total": raw_estimated,
-                "spent_prior": raw_spent_prior,
-                "plan_current": raw_plan_current,
-                "spent_period": raw_spent_period,
-            }
 
         return {
             "period": period,
@@ -471,8 +466,6 @@ def parse_sheet(ws, period: str, original_currency: str) -> list[dict[str, Any]]
             row["extra_json"]["group_label"] = current_group_label
         funding = _funding_extra(ws, r, original_currency)
         row["extra_json"]["funding"] = funding["funding"]
-        if original_currency != "EUR":
-            row["extra_json"]["original"]["funding"] = funding["funding_raw"]
         rows.append(row)
 
     return rows

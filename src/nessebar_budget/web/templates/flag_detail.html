@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block title %}{{ f.rule_label }} — Сигнал #{{ f.id }} — Бюджетен монитор Несебър{% endblock %}
+{% block description %}{{ f.message[:160] }}{% endblock %}
+{% block content %}
+<div class="container">
+  {% call m.page_head("", f.rule_label, root ~ "flags/index.html", "Всички сигнали") %}
+  <span class="meta-row">
+    {{ m.chip(f.tier_label, f.tier_key) }}
+    {{ m.sev_chip(f.severity) }}
+  </span>
+  {% endcall %}
+
+  <section class="block">
+    <p class="page-head__sub">{{ f.message }}</p>
+    {% if f.explanation and f.explanation != f.message %}
+    <p class="page-head__sub">{{ f.explanation }}</p>
+    {% endif %}
+  </section>
+
+  {% if f.law_ref %}
+  <section class="block">
+    <h2 class="block__title">Правно основание</h2>
+    <p>{{ f.law_ref }}</p>
+  </section>
+  {% endif %}
+
+  <section class="block">
+    <h2 class="block__title">Документи за изискване</h2>
+    <p class="block__sub">Тези документи биха показали дали случаят има легитимно обяснение.</p>
+    <ul class="doclist">
+      {% for d in f.documents %}<li>{{ d }}</li>{% endfor %}
+    </ul>
+  </section>
+
+  {% if f.detail_items %}
+  <section class="block">
+    <h2 class="block__title">Числа</h2>
+    <dl class="flagrow__numbers">
+      {% for label, value in f.detail_items %}
+      <div><dt>{{ label }}</dt><dd>{{ value }}</dd></div>
+      {% endfor %}
+    </dl>
+  </section>
+  {% endif %}
+
+  <section class="block">
+    <h2 class="block__title">Свързано с</h2>
+    {% if f.subject_href %}
+    <p><a class="row-link" href="{{ root ~ (f.subject_href | sitepath) }}">{{ f.subject_label }}</a></p>
+    {% else %}
+    <p class="muted">Няма пряка връзка към конкретна поръчка/обект.</p>
+    {% endif %}
+    <p class="footnote">Първо засечен на <strong>{{ f.first_seen_at | bgdate }}</strong> · последно потвърден на
+    <strong>{{ f.last_seen_at | bgdate }}</strong>.</p>
+  </section>
+
+  <section class="block card">
+    <h2 class="block__title">Как да поискате документите</h2>
+    <ol class="steps">
+      <li>Подайте писмено заявление по Закона за достъп до обществена информация (ЗДОИ) до кмета на Община Несебър, с
+      описание на исканите документи — виж готовия текст по-долу.</li>
+      <li>Общината е длъжна да се произнесе в 14-дневен срок от подаването (чл. 28 ЗДОИ; може да се удължи с до 10 дни
+      при обемиста информация).</li>
+      <li>При отказ или мълчание (липса на отговор в срока) можете да обжалвате пред Административен съд – Бургас.</li>
+    </ol>
+    <p class="footnote">Засега подаването на заявлението става извън сайта (по пощата, на място в общината или по
+    имейл) — генератор, който изпраща готово заявление директно оттук, предстои.</p>
+
+    <details class="copy-block">
+      <summary>Копирай текст за заявление</summary>
+      <pre class="copy-block__pre" data-copy-source>{{ f.zdoi_template }}</pre>
+      <button type="button" class="btn btn--ghost btn--sm copy-block__btn" data-copy-button>Копирай текста</button>
+    </details>
+  </section>
+</div>
+{% endblock %}
