@@ -381,6 +381,222 @@ def test_unmatched_spending_rule_silent_when_below_threshold_or_matched() -> Non
     assert rules.unmatched_spending_flags([matched], candidates, thresholds) == []
 
 
+def test_quantity_regex_positive_cases() -> None:
+    for text in (
+        "Доставка на 20 броя компютри",
+        "15 бр. климатици",
+        "2 000 т асфалт",
+        "500 кв.м",
+        "10 /десет/ броя контейнери",
+        "15 х 20 панела",
+    ):
+        assert rules._has_quantity(text), text
+
+
+def test_quantity_regex_negative_cases() -> None:
+    for text in (
+        "Доставка на канцеларски материали",
+        "Униформено облекло за служители",
+    ):
+        assert not rules._has_quantity(text), text
+
+
+def test_quantity_regex_does_not_match_unrelated_words_with_shared_prefix() -> None:
+    # "лева" (currency), "тонаж" (a property, not "X тона"), "часовник" (a
+    # noun) must not be mistaken for a bare "л"/"тон"/"час" unit.
+    assert not rules._has_quantity("20 лева за бройка")
+    assert not rules._has_quantity("20 тонаж на превозното средство")
+    assert not rules._has_quantity("20 часовник")
+
+
+def test_is_framework_defined_true_for_call_off_and_unit_price_language() -> None:
+    assert rules._is_framework_defined("доставка по рамково споразумение")
+    assert rules._is_framework_defined("заплащане по единични цени")
+    assert rules._is_framework_defined("доставка въз основа на писмени заявки от възложителя")
+    assert rules._is_framework_defined(
+        "Посочените количества са прогнозни и в тях може да настъпи промяна"
+    )
+
+
+def test_is_framework_defined_false_for_plain_text() -> None:
+    assert not rules._is_framework_defined("Доставка на посадъчен материал за озеленяване")
+
+
+def _eop_contract_record(
+    *,
+    source_id: str,
+    value_eur: float,
+    subject: str,
+    type_of_contract: int = 2,
+    description: str | None = None,
+    notice_text: str | None = None,
+) -> dict:
+    return {
+        "source": "eop",
+        "source_id": source_id,
+        "title": subject,
+        "contractor_name": "Доставчик ЕООД",
+        "contract_date": _dt(2026, 1, 1),
+        "contract_value_eur": value_eur,
+        "raw_json": {
+            "contract": {"ContractSubject": subject, "TypeOfContract": type_of_contract},
+            "tender_detail": {
+                "TenderName": subject,
+                "TenderDescription": description or "",
+                "notice_text": notice_text or "",
+            },
+        },
+    }
+
+
+def test_missing_quantity_rule_flags_supply_contract_without_quantity() -> None:
+    thresholds = Thresholds()
+    record = _eop_contract_record(
+        source_id="413",
+        value_eur=385_000,
+        subject="Избор на изпълнител за доставка на посадъчен материал – цветя и храсти",
+    )
+    flags = rules.missing_quantity_flags([record], [], thresholds)
+    assert len(flags) == 1
+    flag = flags[0]
+    assert flag["severity"] == "warning"  # >= 100k and < 500k
+    assert flag["subject_type"] == "contract"
+    assert flag["subject_id"] == "eop:413"
+    assert "не посочва количество" in flag["message"]
+    assert "€" in flag["message"]
+    assert "ЗОП" in flag["law_ref"]
+    # None of title/TenderDescription/notice_text stated a quantity here.
+    assert flag["details_json"]["quantity_found_in"] == "none"
+
+
+def test_missing_quantity_rule_finds_quantity_in_notice_text() -> None:
+    """The quantity-text search now reaches `tender_detail.notice_text` --
+    the richer text `scrapers/eop.py`'s `extract_notice`/`_build_notices`
+    parse from the full published-notice HTML -- not just `title`/
+    `TenderDescription`. This is the fix for EOP ids like 644-646 (see
+    docs/RULES.md): a contract whose `title` and (truncated)
+    `TenderDescription` both lack a quantity must no longer be flagged if
+    the full notice text states one.
+    """
+    thresholds = Thresholds()
+    record = _eop_contract_record(
+        source_id="644",
+        value_eur=1_478_239,
+        subject="Доставка на горива за нуждите на Общинска администрация Несебър",
+        description="Доставка на горива за нуждите на Общинска администрация Несебър по обособени позиции:",
+        notice_text="Доставка на 150 000 литра дизелово гориво Б6 за нуждите на ОП БКСО - Несебър",
+    )
+    assert rules.missing_quantity_flags([record], [], thresholds) == []
+
+
+def test_missing_quantity_rule_severity_tiers_by_value() -> None:
+    thresholds = Thresholds()
+    info = _eop_contract_record(source_id="1", value_eur=50_000, subject="Доставка на материали")
+    warn = _eop_contract_record(source_id="2", value_eur=150_000, subject="Доставка на материали")
+    high = _eop_contract_record(source_id="3", value_eur=600_000, subject="Доставка на материали")
+    flags = rules.missing_quantity_flags([info, warn, high], [], thresholds)
+    by_id = {f["details_json"]["source_id"]: f for f in flags}
+    assert by_id["1"]["severity"] == "info"
+    assert by_id["2"]["severity"] == "warning"
+    assert by_id["3"]["severity"] == "high"
+
+
+def test_missing_quantity_rule_silent_when_quantity_stated_or_below_threshold_or_wrong_type() -> None:
+    thresholds = Thresholds()
+    has_quantity = _eop_contract_record(
+        source_id="1", value_eur=200_000, subject="Доставка на 20 броя компютри"
+    )
+    below_threshold = _eop_contract_record(
+        source_id="2", value_eur=10_000, subject="Доставка на материали"
+    )
+    not_a_supply = _eop_contract_record(
+        source_id="3", value_eur=500_000, subject="СМР по ремонт на улица", type_of_contract=3
+    )
+    assert rules.missing_quantity_flags([has_quantity], [], thresholds) == []
+    assert rules.missing_quantity_flags([below_threshold], [], thresholds) == []
+    assert rules.missing_quantity_flags([not_a_supply], [], thresholds) == []
+
+
+def test_missing_quantity_rule_silent_when_framework_defined() -> None:
+    thresholds = Thresholds()
+    record = _eop_contract_record(
+        source_id="412",
+        value_eur=220_000,
+        subject="Доставка на спомагателно-хигиенни материали",
+        description=(
+            "чрез периодично възлагане на доставки въз основа на писмени заявки "
+            "от възложителя, по прогнозни количества"
+        ),
+    )
+    assert rules.missing_quantity_flags([record], [], thresholds) == []
+
+
+def test_missing_quantity_rule_ignores_sigma_and_open_tenders() -> None:
+    thresholds = Thresholds()
+    sigma_record = {
+        "source": "sigma",
+        "source_id": "1",
+        "contractor_name": "X",
+        "contract_date": _dt(2026, 1, 1),
+        "contract_value_eur": 500_000,
+        "raw_json": {},
+    }
+    open_tender = {
+        "source": "eop",
+        "source_id": "2",
+        "contract_value_eur": 500_000,
+        "raw_json": {"contract": {"ContractSubject": "Доставка на материали", "TypeOfContract": 2}},
+    }
+    assert rules.missing_quantity_flags([sigma_record, open_tender], [], thresholds) == []
+
+
+def test_missing_quantity_rule_flags_budget_object_without_quantity() -> None:
+    thresholds = Thresholds()
+    objects = [
+        {
+            "paragraph": "5200",
+            "object_name": "Компютри за СУ Несебър STEM",
+            "period": "2026-08",
+            "plan_current": 75_195,
+            "spent_period": 75_195,
+        }
+    ]
+    flags = rules.missing_quantity_flags([], objects, thresholds)
+    assert len(flags) == 1
+    flag = flags[0]
+    assert flag["subject_type"] == "budget_object"
+    assert flag["subject_id"] == "5200:Компютри за СУ Несебър STEM"
+    assert "€" in flag["message"]
+
+
+def test_missing_quantity_rule_budget_object_silent_outside_section_52_or_with_quantity() -> None:
+    thresholds = Thresholds()
+    other_paragraph = {
+        "paragraph": "5100",
+        "object_name": "Основен ремонт на улица",
+        "period": "2026-08",
+        "plan_current": 300_000,
+        "spent_period": 300_000,
+    }
+    has_quantity = {
+        "paragraph": "5200",
+        "object_name": "15 бр. климатици за общински сгради",
+        "period": "2026-08",
+        "plan_current": 0,
+        "spent_period": 95_735,
+    }
+    below_threshold = {
+        "paragraph": "5200",
+        "object_name": "Дребно оборудване",
+        "period": "2026-08",
+        "plan_current": 5_000,
+        "spent_period": 1_000,
+    }
+    assert rules.missing_quantity_flags([], [other_paragraph], thresholds) == []
+    assert rules.missing_quantity_flags([], [has_quantity], thresholds) == []
+    assert rules.missing_quantity_flags([], [below_threshold], thresholds) == []
+
+
 # ---------------------------------------------------------------------------
 # analysis.engine: upsert / new-updated-resolved bookkeeping
 # ---------------------------------------------------------------------------

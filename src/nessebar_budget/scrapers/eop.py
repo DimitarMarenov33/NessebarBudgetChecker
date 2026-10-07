@@ -29,6 +29,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+from bs4 import BeautifulSoup
 
 from nessebar_budget.config import get_settings
 from nessebar_budget.scrapers.base import Scraper
@@ -95,6 +96,319 @@ def _slim(detail: dict[str, Any] | None) -> dict[str, Any] | None:
 
 def _safe_filename_fragment(text: str) -> str:
     return re.sub(r"[^0-9A-Za-zА-Яа-яЁё]+", "_", text).strip("_") or "x"
+
+
+# ---------------------------------------------------------------------------
+# Notice-HTML parsing (``TenderPublicationDetails[].HtmlPreview``)
+# ---------------------------------------------------------------------------
+#
+# Each published notice (решение / обявление за поръчка / обявление за
+# възложена поръчка / ...) is rendered server-side as a self-contained HTML
+# page and handed back verbatim in ``HtmlPreview`` (~55-250KB). Two distinct
+# markup generations were found by inspecting several real cached tenders
+# (see docs/sources/EOP_API.md):
+#
+# 1. "Legacy" notices (``PublicationFormType`` 2/3/32/... -- the Bulgarian-only
+#    ЗОП forms): sections are laid out as a sequence of ``<tr>`` rows. A
+#    "header" row has a ``<td class="first__coll">`` (the roman/arabic field
+#    code, e.g. "II.1.4)") whose sibling ``<td>`` holds a
+#    ``<div class="section__name">`` (the field's Bulgarian label, e.g.
+#    "Кратко описание"). The following row(s), until the next header row,
+#    hold the field's value(s): either one ``<div class="name">`` directly
+#    (a single unlabeled value -- used for CPV codes, free-text descriptions,
+#    yes/no answers), optionally split across *several* sibling
+#    ``<div class="name">`` elements in the same ``<td>`` for a
+#    multi-paragraph description (one div per paragraph/bullet -- a real
+#    description was found split this way; naively taking only the first
+#    ``div.name`` would silently truncate it), or a
+#    ``<div class="label__name">``+``<div class="name">`` pair (a named
+#    sub-field, e.g. "Стойност, без да се включва ДДС:" / "7330000").
+#
+# 2. "eForms" notices (``PublicationFormType`` 54/60/65/72/74/76/78 -- the
+#    newer EU-standard BT-coded forms): the *same* row/div markup is reused,
+#    but every field is a labeled sub-field -- the field code is folded into
+#    the label text itself, e.g. ``<div class="label__name">Описание(BT-24-
+#    Procedure)</div>``. There is no literal "CPV" text anywhere in this
+#    format; the CPV field is instead "Основна класификация(BT-262-...)" /
+#    "Допълнителна класификация(BT-263-...)", whose value is
+#    "<8-digit code> - <description>". Multi-lot procedures repeat the
+#    procedure-level fields once more per lot, suffixed "-Lot" instead of
+#    "-Procedure" (e.g. "Описание(BT-24-Lot)").
+#
+# Both generations share one more thing: in both, the notice's own heading
+# (the document title, e.g. "Обявление за възложена поръчка") is a single
+# ``<p class="header__form">`` near the top of the page -- used as-is for
+# ``notice_type`` below.
+#
+# Label-based extraction (matching on these Bulgarian headings/labels, not
+# brittle CSS positions) is used throughout so that both generations --  and
+# any field this project doesn't otherwise look for -- degrade gracefully
+# (simply not found) rather than silently reading the wrong cell.
+
+_CPV_CODE_RE = re.compile(r"\b\d{8}(?:-\d)?\b")
+#: Matches both legacy headings ("Основен CPV код", "Допълнителни CPV
+#: кодове") and eForms labels ("Основна класификация(BT-262-...)",
+#: "Допълнителна класификация(BT-263-...)").
+_CPV_CONTEXT_RE = re.compile(r"CPV|класификация", re.IGNORECASE)
+#: The legacy heading (II.1.2) for the procedure-level *main* CPV code --
+#: distinct from "Допълнителни CPV кодове" (II.2.2, per-lot, additional).
+_CPV_MAIN_HEADING = "Основен CPV код"
+#: The eForms label prefix for the procedure-level (not "-Lot") main
+#: classification.
+_CPV_MAIN_LABEL_PREFIX = "Основна класификация(BT-262-Procedure"
+
+#: Legacy heading (II.1.4) for the procedure-level short description.
+_SHORT_DESC_HEADING = "Кратко описание"
+#: eForms label prefix for the same, procedure-level (not "-Lot").
+_SHORT_DESC_LABEL_PREFIX = "Описание(BT-24-Procedure"
+
+#: Legacy heading (II.2.4), repeated once per обособена позиция (lot).
+_LOT_DESC_HEADING = "Описание на обществената поръчка"
+#: eForms label prefix, repeated once per lot.
+_LOT_DESC_LABEL_PREFIX = "Описание(BT-24-Lot"
+
+#: Matches both "Прогнозна стойност" (II.2.6, per-lot) and "Прогнозна обща
+#: стойност" (II.1.5) legacy headings, and the eForms label "Прогнозна
+#: стойност, без да се включва ДДС(BT-27-...)" -- deliberately loose (just
+#: "Прогнозна" ... "стойност" in order) to cover all three wordings.
+_ESTIMATED_VALUE_RE = re.compile(r"Прогнозна.*стойност", re.IGNORECASE)
+#: The legacy sub-label ("Валута:"/"Валута") paired with a "Стойност, без да
+#: се включва ДДС" sub-label under the same heading.
+_CURRENCY_LABEL_RE = re.compile(r"^Валута", re.IGNORECASE)
+
+_WHITESPACE_RE = re.compile(r"\s+")
+
+#: `full_text` cap (see `extract_notice`) -- generous enough for a real
+#: eForms notice's full legal boilerplate (~25,000 chars observed) while
+#: keeping a hard ceiling.
+_FULL_TEXT_MAX_CHARS = 30_000
+#: `notice_text` cap (see `_build_notices`) -- this one lands in the DB.
+_NOTICE_TEXT_MAX_CHARS = 8_000
+
+
+def _clean(text: str) -> str:
+    """Collapse all whitespace (incl. newlines from the source HTML's
+    indentation) to single spaces and strip."""
+    return _WHITESPACE_RE.sub(" ", text).strip()
+
+
+def _notice_sections(soup: BeautifulSoup) -> list[dict[str, Any]]:
+    """Group a notice page's ``<tr>`` rows into one dict per field section:
+    ``{"heading": <section__name text, "" if none>, "values": [(label, value), ...]}``,
+    in document order. See the module-level comment above for the markup this
+    walks. A "header" row (``td.first__coll``) starts a new section; every
+    row after it, up to the next header row, contributes one ``(label,
+    value)`` pair -- ``label`` is `None` for an unlabeled value, and
+    ``value`` joins *all* sibling ``div.name`` elements in that row's value
+    ``<td>`` (not just the first) so a multi-paragraph value isn't truncated.
+    """
+    sections: list[dict[str, Any]] = []
+    current: dict[str, Any] | None = None
+
+    for row in soup.find_all("tr"):
+        cells = row.find_all("td", recursive=False)
+        if not cells:
+            continue
+        first_cell = cells[0]
+        if "first__coll" in (first_cell.get("class") or []):
+            heading_div = row.find("div", class_="section__name")
+            current = {"heading": _clean(heading_div.get_text(" ")) if heading_div else "", "values": []}
+            sections.append(current)
+            continue
+
+        if current is None:
+            continue
+        value_cell = cells[1] if len(cells) > 1 else cells[0]
+        name_divs = value_cell.find_all("div", class_="name")
+        if not name_divs:
+            continue
+        label_div = value_cell.find("div", class_="label__name")
+        label = _clean(label_div.get_text(" ")) if label_div else None
+        value = _clean(" ".join(div.get_text(" ") for div in name_divs))
+        current["values"].append((label, value))
+
+    return sections
+
+
+def extract_notice(html: str) -> dict[str, Any]:
+    """Parse one published notice's rendered HTML
+    (``TenderPublicationDetails[].HtmlPreview``) into its structured fields.
+
+    Returns a dict with:
+
+    - ``notice_type``: the notice's own heading (``p.header__form``), e.g.
+      "Обявление за поръчка", "Обявление за възложена поръчка", "Решение по
+      чл. 22, ал.1 от ЗОП" -- or `None` if that element isn't present.
+    - ``cpv_main``: the procedure-level main CPV code (e.g. "09100000"), or
+      `None` if not found.
+    - ``cpv_codes``: every CPV-ish 8-digit code found near a CPV/
+      "класификация" label (main + additional + per-lot), order-preserving,
+      deduplicated.
+    - ``short_description``: the procedure-level short description (legacy
+      II.1.4 "Кратко описание" / eForms "Описание(BT-24-Procedure)"), or
+      `None`.
+    - ``lot_descriptions``: one entry per обособена позиция (legacy II.2.4 /
+      eForms "Описание(BT-24-Lot)"), in document order -- usually where a
+      supply contract's quantities, if stated anywhere in the notice, are.
+    - ``estimated_value``: the procedure-level estimated value as found in
+      the text (e.g. "7330000 BGN", "650000.00 BGN"), or `None`.
+    - ``full_text``: the whole notice's tag-stripped, whitespace-normalized
+      text, capped at `_FULL_TEXT_MAX_CHARS` chars -- for ad-hoc inspection;
+      callers that store this in the DB (see `_build_notices`) must drop it
+      again, it is deliberately excluded from the DB-bound `notice_text`.
+
+    Degrades gracefully: a field this function doesn't recognize (or a notice
+    generation it hasn't seen) simply comes back `None`/empty, never raises.
+    """
+    soup = BeautifulSoup(html or "", "lxml")
+
+    header_form = soup.find("p", class_="header__form")
+    notice_type = _clean(header_form.get_text(" ")) if header_form else None
+
+    sections = _notice_sections(soup)
+
+    cpv_main: str | None = None
+    cpv_codes: list[str] = []
+    short_description: str | None = None
+    lot_descriptions: list[str] = []
+    estimated_value: str | None = None
+
+    for section in sections:
+        heading = section["heading"]
+        values: list[tuple[str | None, str]] = section["values"]
+
+        for label, value in values:
+            if not _CPV_CONTEXT_RE.search(f"{heading} {label or ''}"):
+                continue
+            codes = _CPV_CODE_RE.findall(value)
+            for code in codes:
+                if code not in cpv_codes:
+                    cpv_codes.append(code)
+            if (
+                codes
+                and cpv_main is None
+                and (heading == _CPV_MAIN_HEADING or (label or "").startswith(_CPV_MAIN_LABEL_PREFIX))
+            ):
+                cpv_main = codes[0]
+
+        if short_description is None:
+            if heading == _SHORT_DESC_HEADING and values:
+                short_description = values[0][1]
+            else:
+                for label, value in values:
+                    if (label or "").startswith(_SHORT_DESC_LABEL_PREFIX):
+                        short_description = value
+                        break
+
+        if heading == _LOT_DESC_HEADING and values:
+            lot_descriptions.append(values[0][1])
+        else:
+            for label, value in values:
+                if (label or "").startswith(_LOT_DESC_LABEL_PREFIX):
+                    lot_descriptions.append(value)
+
+        if estimated_value is None:
+            for label, value in values:
+                if label and _ESTIMATED_VALUE_RE.search(label):
+                    # eForms: number + currency already combined in one value.
+                    estimated_value = value
+                    break
+            else:
+                if _ESTIMATED_VALUE_RE.search(heading) and values:
+                    # Legacy: "Стойност, без да се включва ДДС" / "Валута"
+                    # as two separate sub-fields under the same heading.
+                    amount = values[0][1]
+                    currency = next(
+                        (value for label, value in values[1:] if label and _CURRENCY_LABEL_RE.search(label)),
+                        None,
+                    )
+                    estimated_value = f"{amount} {currency}".strip() if currency else amount
+
+    full_text = _clean(soup.get_text(" "))[:_FULL_TEXT_MAX_CHARS]
+
+    return {
+        "notice_type": notice_type,
+        "cpv_main": cpv_main,
+        "cpv_codes": cpv_codes,
+        "short_description": short_description,
+        "lot_descriptions": lot_descriptions,
+        "estimated_value": estimated_value,
+        "full_text": full_text,
+    }
+
+
+def _build_notices(detail: dict[str, Any] | None) -> tuple[list[dict[str, Any]], str]:
+    """From a tender_detail's ``TenderPublicationDetails[]``, parse each
+    notice's ``HtmlPreview`` (via `extract_notice`) and return
+    ``(notices, notice_text)``:
+
+    - ``notices``: one slim dict per publication -- that publication's own
+      scalar fields (``_slim``-style: dicts/lists dropped, so the large
+      ``TenderPublicationAuthorityResultCollection`` sub-object is excluded)
+      plus the `extract_notice` fields *except* ``full_text`` (kept out of
+      the DB -- that's the whole point of this parsing: stop storing a
+      212-char truncated summary without blowing the DB back up with a
+      65KB-per-notice HTML dump instead).
+    - ``notice_text``: ``short_description`` + ``lot_descriptions`` across
+      every notice, exact-string deduplicated (order-preserving) and capped
+      at `_NOTICE_TEXT_MAX_CHARS` chars -- the richer replacement for the
+      single, sometimes mid-sentence-truncated `TenderDescription` scalar
+      this project used to rely on alone (see docs/RULES.md).
+    """
+    publications = (detail or {}).get("TenderPublicationDetails") or []
+    notices: list[dict[str, Any]] = []
+    text_parts: list[str] = []
+    seen_text: set[str] = set()
+
+    for pub in publications:
+        html_preview = pub.get("HtmlPreview")
+        if not html_preview:
+            continue
+        parsed = extract_notice(html_preview)
+        pub_scalars = {
+            k: v for k, v in pub.items() if k != "HtmlPreview" and not isinstance(v, (dict, list))
+        }
+        notices.append(
+            {
+                **pub_scalars,
+                "notice_type": parsed["notice_type"],
+                "cpv_main": parsed["cpv_main"],
+                "cpv_codes": parsed["cpv_codes"],
+                "short_description": parsed["short_description"],
+                "lot_descriptions": parsed["lot_descriptions"],
+                "estimated_value": parsed["estimated_value"],
+            }
+        )
+
+        for text in (parsed["short_description"], *parsed["lot_descriptions"]):
+            if text and text not in seen_text:
+                seen_text.add(text)
+                text_parts.append(text)
+
+    notice_text = " ".join(text_parts)[:_NOTICE_TEXT_MAX_CHARS]
+    return notices, notice_text
+
+
+def _tender_detail_with_notices(
+    detail: dict[str, Any] | None,
+) -> tuple[dict[str, Any] | None, str | None]:
+    """`_slim(detail)` plus a parsed ``notices``/``notice_text`` (see
+    `_build_notices`), and the CPV code to promote to the `Procurement` row's
+    own `cpv_code` column: `cpv_main` of the first notice that has one, in
+    `TenderPublicationDetails` order.
+    """
+    slim_detail = _slim(detail)
+    if not detail:
+        return slim_detail, None
+
+    notices, notice_text = _build_notices(detail)
+    if notices:
+        slim_detail = dict(slim_detail or {})
+        slim_detail["notices"] = notices
+        slim_detail["notice_text"] = notice_text
+
+    cpv_code = next((n["cpv_main"] for n in notices if n.get("cpv_main")), None)
+    return slim_detail, cpv_code
 
 
 class EopScraper(Scraper):
@@ -370,12 +684,13 @@ class EopScraper(Scraper):
             title = title or detail.get("TenderName")
 
         published_at = _parse_net_date(detail.get("PublicationDate")) if detail else None
+        tender_detail, cpv_code = _tender_detail_with_notices(detail)
 
         return {
             "source": "eop",
             "source_id": str(contract.get("ContractNumber")),
             "title": title,
-            "cpv_code": None,
+            "cpv_code": cpv_code,
             "procedure_type": contract.get("ProcedureType"),
             "estimated_value_eur": est_eur,
             "estimated_value_bgn": est_bgn,
@@ -387,7 +702,7 @@ class EopScraper(Scraper):
             "published_at": published_at,
             "contract_date": _parse_net_date(contract.get("ContractDate")),
             "url": f"{EOP_APP_URL}/today/{tender_id}" if tender_id else None,
-            "raw_json": {"contract": contract, "procedure": procedure, "tender_detail": _slim(detail)},
+            "raw_json": {"contract": contract, "procedure": procedure, "tender_detail": tender_detail},
         }
 
     @staticmethod
@@ -398,12 +713,13 @@ class EopScraper(Scraper):
         est_eur, est_bgn = _value_by_currency(procedure.get("EstimatedValue"), procedure.get("Currency"))
         title = procedure.get("TenderName") or (detail.get("TenderName") if detail else None)
         published_at = _parse_net_date(detail.get("PublicationDate")) if detail else None
+        tender_detail, cpv_code = _tender_detail_with_notices(detail)
 
         return {
             "source": "eop",
             "source_id": str(tender_id),
             "title": title,
-            "cpv_code": None,
+            "cpv_code": cpv_code,
             "procedure_type": procedure.get("ProcedureType"),
             "estimated_value_eur": est_eur,
             "estimated_value_bgn": est_bgn,
@@ -415,5 +731,5 @@ class EopScraper(Scraper):
             "published_at": published_at,
             "contract_date": None,
             "url": f"{EOP_APP_URL}/today/{tender_id}" if tender_id else None,
-            "raw_json": {"procedure": procedure, "tender_detail": _slim(detail)},
+            "raw_json": {"procedure": procedure, "tender_detail": tender_detail},
         }

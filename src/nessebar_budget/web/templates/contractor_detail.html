@@ -28,15 +28,15 @@
   <section class="block">
     <h2 class="block__title">Договори</h2>
     <div class="table-wrap">
-    <table class="table">
+    <table class="table table--contractor-contracts table--stack">
       <thead><tr><th class="col-date">Дата</th><th>Предмет</th><th class="num">Стойност</th><th class="num col-bids">Оферти</th></tr></thead>
       <tbody>
       {% for c in co.contracts %}
       <tr>
         <td class="nowrap muted">{{ c.contract_date | bgdate }}</td>
         <td><a class="row-link clamp-2" href="{{ root }}contracts/{{ c.source_id }}.html">{{ c.title or '(без заглавие)' }}</a></td>
-        <td class="num">{{ c.contract_value_eur | eur }}</td>
-        <td class="num">{% if c.bids_received is not none %}{{ c.bids_received | num }}{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td class="num">{{ m.cell_label("Стойност") }}{{ c.contract_value_eur | eur }}</td>
+        <td class="num">{{ m.cell_label("Оферти") }}{% if c.bids_received is not none %}{{ c.bids_received | num }}{% else %}<span class="muted">—</span>{% endif %}</td>
       </tr>
       {% endfor %}
       </tbody>

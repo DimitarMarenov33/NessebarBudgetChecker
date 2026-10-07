@@ -43,6 +43,24 @@ quotes/citations; texts extracted from lex.bg into `docs/law/*.txt`):
   fixed conversion rate, so BGN-denominated legal thresholds are converted
   to EUR via that same fixed rate for comparison against this project's
   EUR-denominated data.
+
+- Quantity disclosure (`MissingQuantityRule`): ЗОП чл. 2, ал. 2 lists
+  "количеството или обема" (the quantity or volume) of a procurement, next to
+  its subject/value/complexity, as one of the things requirements must be
+  proportionate to -- i.e. the law treats quantity as a defining attribute of
+  "what" is being procured. More concretely, Приложение № 4 (towards чл. 23,
+  ал. 5, т. 2, буква "а") ЧАСТ В, т. 6 -- the minimum content of an award
+  notice (обявление за възлагане на поръчка) -- requires: "Описание на
+  поръчката: ... естество и количество или стойност на доставките..." (for a
+  supply contract: nature AND quantity-OR-value of the goods). **Honestly**:
+  this is a disjunction -- a notice that states only the *value* (which every
+  contract here already does) already satisfies this specific provision, so a
+  missing quantity alone is not, by itself, a proven legal violation. This
+  rule's `law_ref` is phrased accordingly as a transparency signal grounded in
+  чл. 2 + that notice-content annex, not as a claim that the omission of
+  quantity breaks the law outright. See `docs/RULES.md` for the full
+  discussion and caveats (including cases found where our own scrape -- not
+  the municipality -- is the one missing the number).
 """
 
 from __future__ import annotations
@@ -109,6 +127,27 @@ class Thresholds(BaseSettings):
     annex_growth_law_ref: str = (
         "чл. 116, ал. 2 ЗОП (законов таван на натрупаното увеличение: 50% "
         "от стойността на основния договор; тук се сигнализира много по-рано, при +10%)"
+    )
+
+    # --- MissingQuantityRule --- ЗОП чл. 2, ал. 2 + Приложение № 4 (виж бележката по-горе)
+    missing_quantity_min_value_eur: float = 20_000.0
+    missing_quantity_warning_eur: float = 100_000.0
+    missing_quantity_high_eur: float = 500_000.0
+    # Scope A (EOP supply contracts, TypeOfContract == 2): the award notice's
+    # minimum legal content (quantity OR value) is already satisfied by the
+    # value alone, so this is phrased as a transparency signal, not a breach.
+    missing_quantity_law_ref: str = (
+        "чл. 2, ал. 2 ЗОП (съответствие с количеството/обема на поръчката); "
+        'Приложение № 4, част В, т. 6 ЗОП (обявлението за възлагане посочва '
+        "естество и количество или стойност на доставките)"
+    )
+    # Scope B (§ 52 capital budget objects): the capital ledger is a ЗПФ
+    # budget-execution document, not a ЗОП procurement notice -- there is no
+    # equivalent direct legal requirement to itemize quantities here, only the
+    # general public-finance transparency principle.
+    missing_quantity_budget_law_ref: str = (
+        "принцип на прозрачност, чл. 20, т. 7 ЗПФ (не е пряко правно "
+        "изискване за посочване на брой/количество в разчета за капиталови разходи)"
     )
 
     @property

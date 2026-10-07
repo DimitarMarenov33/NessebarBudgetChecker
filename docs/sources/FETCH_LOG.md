@@ -81,3 +81,39 @@ viewport 1400x1000-1200, locale bg-BG, ~1 action/sec. Full request/response capt
 | https://data.egov.bg/api-spetsifikatsiya?section=22 and &item=82 | GET (httpx + browser) | 200 | Mostly placeholder/"missing help page"; real content is a "СВАЛИ API" download button whose target was not resolved |
 | https://nesebar.imeon.bg/frmAOP.aspx | GET (browser) | 200 | Buyer-profile filter form loads; clicking „Зареди" (`ctl00$ContentPlaceHolder1$btnLoad`) loads 403 results |
 | https://nesebar.imeon.bg/frmAOP.aspx (after Зареди postback) | POST (browser) | 200 | Full listing captured, saved `data/samples/imeon_listing.html`; pagination confirmed as `__doPostBack('ctl00$ContentPlaceHolder1$gvAOP','Page$N')`; outbound AOP links confirmed as `aop.bg/case2.php?mode=show_case&case_id=...` |
+
+## Sub-threshold search 2026-10-07
+
+UA `Mozilla/5.0 (compatible; NessebarTransparencyProject/1.0; civic research; polite crawler)` for nesebar.bg (httpx, ~10s between requests per robots.txt `Crawl-delay: 10`); `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ... Chrome/128.0.0.0` for os-nessebar.eu and data.egov.bg (httpx + Playwright headless Chromium, ~1 req/s).
+
+| URL | Method | HTTP | Notes |
+|---|---|---|---|
+| https://www.nesebar.bg/robots.txt | GET (httpx) | 200 | Re-confirmed: `Disallow: /admin/, /wp-admin/`, `Crawl-delay: 10` |
+| https://www.nesebar.bg/sitemap.xml | GET (httpx) | 404 | No XML sitemap |
+| https://www.nesebar.bg/ | GET (httpx) | 200 | Full nav link extraction — no "Декларации"/"Текущи ремонти"/"Договори" top-level item exists |
+| https://www.nesebar.bg/sitemap.html | GET (httpx) | 200 | HTML sitemap; same nav set as homepage, nothing beyond it |
+| https://www.nesebar.bg/register.html | GET (httpx) | 200 | Full registry list extracted (~18 register categories, ~90 individual file links) — see SUB_THRESHOLD.md for the complete breakdown; no contracts/expense/payments register among them |
+| https://www.nesebar.bg/reports.html | GET (httpx) | 200 | 539KB; headings enumerated for all periods 2018-2026; confirmed a distinct annual package per year (`otcheti/1-N.pdf`...`6-N.pdf`: Одитен доклад/Касов отчет/Баланс/Отчет за приходи и разходи/Пояснителни сведения/Обяснителна записка), separate from the monthly `B1`/capital-ledger archive already catalogued |
+| https://www.nesebar.bg/otcheti/6-25.pdf | GET (httpx) | 200 | Downloaded — "Обяснителна записка" 2025 annual report. 3pp, Konica Minolta scan, **zero extractable text** (pdftotext empty) |
+| https://www.nesebar.bg/otcheti/2-25.pdf | GET (httpx) | 200 | Downloaded — "Касов отчет към 31.12.2025". 3pp, same scanner, zero extractable text |
+| https://www.nesebar.bg/otcheti/5-25.pdf | GET (httpx) | 200 | Downloaded — "Пояснителни сведения" 2025 |
+| https://www.nesebar.bg/otcheti/1-25.pdf | GET (httpx) | 200 | Downloaded — "Одитен доклад" 2025 (1.06MB) |
+| https://www.nesebar.bg/otcheti/6-2024.pdf | GET (httpx) | 200 | Downloaded — "Обяснителна записка" 2024, same scanned/no-text-layer pattern |
+| https://www.nesebar.bg/obstinski-predpriqtiq.html | GET (httpx) | 200 | Lists 5 municipal enterprises (БКСО, общински гори, управление на отпадъците, общинско пристанище, звено самоохрана), each linking to a plain description page |
+| https://www.nesebar.bg/bks.php | GET (httpx) | 200 | ОП "БКСО" page — mission text only, no own procurement/tenders section, shares main-site nav (Профил на купувача/Търгове) |
+| https://www.nesebar.bg/psno.php | GET (httpx) | 200 | ОП "Управление на отпадъците" page — same pattern, no own procurement section |
+| https://os-nessebar.eu/robots.txt | GET (httpx) | 200 | `Disallow:` empty — fully open |
+| https://os-nessebar.eu/resheniya | GET (httpx) | 200 | Decisions list, page 1 (protocols №20-29, Sep 2025-Sep 2026), paginated 11 pages, no site search endpoint found |
+| https://os-nessebar.eu/resheniya?page=2 | GET (httpx) | 200 | Page 2 (protocols №10-19, Sep 2024-Jul 2025) |
+| https://os-nessebar.eu/resheniya/resheniya-ot-protokol-2429012026-g | GET (httpx) | 200 | Protocol #24 (29.01.2026) — full text scanned for "бюджет"; only incidental mentions, not the budget-adoption decision; one unrelated PDF attachment (stray-dog program) |
+| https://os-nessebar.eu/resheniya/resheniya-ot-protokol-2512032026-g | GET (httpx) | 200 | Protocol #25 (12.03.2026) — references 2026 state budget law *not yet adopted* as of this session date; one unrelated attachment (Приложение №1, РИЕ) |
+| https://os-nessebar.eu/resheniya/resheniya-ot-protokol-1528032025-g | GET (httpx) | 200 | Protocol #15 (28.03.2025), sampled as a 2025-budget-adoption candidate — not confirmed as the budget decision; one unrelated attachment (РИЕ placement schemes) |
+| https://os-nessebar.eu/search?q=бюджет | GET (httpx) | 404 | No search endpoint |
+| https://os-nessebar.eu/search?search=бюджет | GET (httpx) | 404 | No search endpoint |
+| https://data.egov.bg/data?q=Община+Несебър | GET (httpx + Playwright rendered) | 200 | "358 намерени" but **zero** occurrences of "Несебър" in the rendered results (only in the echoed search box) — portal falls back to an irrelevant generic list (Сапарева баня datasets) rather than reporting "no results" |
+| https://data.egov.bg/data?q=Несебър | GET (Playwright rendered) | 200 | "3 намерени"; reveals organisation facet "Община Несебър (2)", org id `279`, and org profile link |
+| https://data.egov.bg/organisation/profile/3f435dd4-818c-4517-b01d-8ae0246f8ef7 | GET (Playwright rendered) | 200 | Org profile page itself renders no dataset list client-side within the wait window |
+| https://data.egov.bg/data?q=Несебър&org[0]=279 | GET (Playwright rendered) | 200 | **Confirmed: exactly 2 datasets** — "Регистър на ЮЛНЦ в които участва община Несебър" (`/data/view/b0443df7-43cb-47c2-8778-cc8ff6ad0d6f`) and "Подлежаща за публикуване информация по ЗПКОНПИ в община Несебър" (`/data/view/140e1743-b0f1-4cb5-8603-4f674b1f0fa2`) — neither procurement/budget/contracts-related |
+| https://os-nessebar.eu/resheniya (pages 3-11) | not attempted | — | Time budget; would be needed to pinpoint exact 2024/2025/2026 budget-adoption protocol numbers by exhaustive paging since no search exists |
+| https://nesebar.imeon.bg/frmAOS.aspx | not fetched | — | Linked from register.html as "Регистър на актове за общинска собственост" / "Регистър на разпоредителните сделки с имоти" — property-transactions register, out of scope for purchases but noted for completeness |
+| registri/второстепенни разпоредители с бюджет.PDF | not fetched | — | Listed on register.html as list of second-level budget spending units; title suggests a name list only, not opened this session |

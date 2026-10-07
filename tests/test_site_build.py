@@ -212,3 +212,80 @@ def test_detail_and_period_pages_exist(built_site: Path) -> None:
     assert len(list((built_site / "contractors").glob("*.html"))) > 1
     periods = [p for p in (built_site / "budget").glob("*.html") if p.name != "index.html"]
     assert periods, "no budget/<period>.html pages"
+
+
+# ---------------------------------------------------------------------------
+# Mobile layout (390x844, dark) — no page may scroll sideways.
+# ---------------------------------------------------------------------------
+
+try:
+    from playwright.sync_api import sync_playwright
+
+    _HAS_PLAYWRIGHT = True
+except ImportError:  # pragma: no cover - environment without the optional dep
+    _HAS_PLAYWRIGHT = False
+
+requires_playwright = pytest.mark.skipif(
+    not _HAS_PLAYWRIGHT, reason="playwright not installed"
+)
+
+
+def _first(paths) -> Path | None:
+    for p in sorted(paths):
+        if p.name != "index.html":
+            return p
+    return None
+
+
+@requires_db
+@requires_playwright
+def test_pages_do_not_scroll_horizontally_on_phone(built_site: Path) -> None:
+    """Every page must fit a 390px-wide viewport with no horizontal scroll,
+    and must declare a mobile-friendly viewport."""
+    contract_page = _first((built_site / "contracts").glob("*.html"))
+    contractor_page = _first((built_site / "contractors").glob("*.html"))
+    budget_period_page = _first((built_site / "budget").glob("*.html"))
+    assert contract_page and contractor_page and budget_period_page
+
+    pages = [
+        "index.html",
+        "contracts/index.html",
+        "contractors/index.html",
+        contractor_page.relative_to(built_site).as_posix(),
+        "budget/index.html",
+        budget_period_page.relative_to(built_site).as_posix(),
+        "cash/index.html",
+        "flags/index.html",
+        contract_page.relative_to(built_site).as_posix(),
+        "methodology.html",
+    ]
+
+    offenders = []
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        context = browser.new_context(viewport={"width": 390, "height": 844}, color_scheme="dark")
+        page = context.new_page()
+        for rel in pages:
+            page.goto((built_site / rel).as_uri(), wait_until="networkidle")
+
+            viewport_content = page.get_attribute("meta[name='viewport']", "content")
+            assert viewport_content and "width=device-width" in viewport_content, (
+                f"{rel}: missing/incorrect viewport meta tag"
+            )
+
+            scroll_width = page.evaluate("document.documentElement.scrollWidth")
+            client_width = page.evaluate("document.documentElement.clientWidth")
+            if scroll_width > client_width:
+                offenders.append((rel, scroll_width, client_width))
+        browser.close()
+
+    assert not offenders, f"pages scrolling sideways at 390px: {offenders}"
+
+
+@requires_db
+@requires_playwright
+def test_text_size_adjust_is_set(built_site: Path) -> None:
+    """iOS Safari must not be allowed to auto-resize text (it would make the
+    stacked phone tables reflow oddly after a user pinch-zoom elsewhere)."""
+    css = (built_site / "static" / "style.css").read_text(encoding="utf-8")
+    assert "-webkit-text-size-adjust: 100%" in css

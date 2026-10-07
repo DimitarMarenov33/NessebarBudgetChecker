@@ -14,7 +14,7 @@
       {{ m.count(contractors | length) }}
     </div>
     <div class="table-wrap">
-    <table class="table" data-sortable data-filterable>
+    <table class="table table--contractors table--stack" data-sortable data-filterable>
       <thead>
         <tr>
           <th data-sort="none">Изпълнител</th>
@@ -28,13 +28,13 @@
       {% for co in contractors %}
         <tr>
           <td><a class="row-link" href="{{ root }}contractors/{{ co.slug }}.html">{{ co.name }}</a><span class="sub">ЕИК {{ co.eik_display }}</span></td>
-          <td class="num" data-sort-value="{{ co.contract_count }}">{{ co.contract_count | num }}</td>
-          <td class="num" data-sort-value="{{ co.total_value_eur }}">{{ co.total_value_eur | eur }}</td>
+          <td class="num" data-sort-value="{{ co.contract_count }}">{{ m.cell_label("Договори") }}{{ co.contract_count | num }}</td>
+          <td class="num" data-sort-value="{{ co.total_value_eur }}">{{ m.cell_label("Обща стойност") }}{{ co.total_value_eur | eur }}</td>
           <td class="num col-share" data-sort-value="{{ co.share_of_total }}">
-            <span class="share">{{ m.meter(co.share_of_total / max_share if max_share else 0, "muted") }}<span>{{ co.share_of_total | pct }}</span></span>
+            {{ m.cell_label("Дял от общо") }}<span class="share">{{ m.meter(co.share_of_total / max_share if max_share else 0, "muted") }}<span>{{ co.share_of_total | pct }}</span></span>
           </td>
           <td class="num" data-sort-value="{{ co.single_bidder_share if co.single_bidder_share is not none else -1 }}">
-            {% if co.single_bidder_share is not none %}{{ co.single_bidder_share | pct }}{% else %}<span class="muted">няма данни</span>{% endif %}
+            {{ m.cell_label("Един участник") }}{% if co.single_bidder_share is not none %}{{ co.single_bidder_share | pct }}{% else %}<span class="muted">няма данни</span>{% endif %}
           </td>
         </tr>
       {% endfor %}

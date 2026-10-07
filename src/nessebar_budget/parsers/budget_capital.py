@@ -1,14 +1,19 @@
 """Parser for Nessebar's "Разчет за финансиране на капиталовите разходи"
 (capital-expenditure financing ledger) monthly xlsx report.
 
-Layout, learned from `data/samples/nesebar_budget_execution_aug2026.xlsx`
-(see `docs/sources/BUDGET_FORMS.md` for the full writeup):
+Layout, originally learned from `data/samples/nesebar_budget_execution_aug2026.xlsx`
+(2026, EUR-denominated) and extended to cover the 2019-2025 BGN-denominated
+workbooks published under various ad hoc filenames (`kr_2021_2_5206.xlsx`,
+`razchet-mai2021.xlsx`, "Месечен отчет за 2022 Май 5206 Несебър.xlsx",
+`mart2024.xlsx`, ...) -- see `docs/sources/BUDGET_FORMS.md` for the full
+writeup and the per-year variant notes.
 
 Each sheet (one per organisational unit: "Общо" is the municipality-wide
 total, the rest are individual кметства/schools/kindergartens) shares the
-same fixed header (rows 1-9, 1-indexed) followed by data rows:
+same general header shape (a handful of title/period rows, then a row of
+column captions, then data) followed by data rows:
 
-- row 10: the sheet's grand total ("ОБЩО").
+- row 10 (2026 sample): the sheet's grand total ("ОБЩО").
 - a row whose column A is a 4-digit code ending in "00" (e.g. "5100",
   "5200") is a КР-paragraph subtotal (§51-00 Основен ремонт на ДМА,
   §52-00 Придобиване на ДМА, ...).
@@ -29,10 +34,28 @@ same fixed header (rows 1-9, 1-indexed) followed by data rows:
   `extra_json["group_label"]` on the object rows that follow, until the next
   label/subtotal row.
 
-Columns D-G are estimated_total / spent_prior / plan_current / spent_period.
-Columns H-W are five funding-source groups (each plan+actual, two with
-"в т.ч." memo sub-columns and free-text annotation cells); captured whole
-into `extra_json["funding"]`.
+Columns for the four core monetary fields (Сметна стойност / Усвоено до
+края на предходната година / Уточнен план / Усвоено към отчетния период)
+are located every parse by searching the sheet's own header row for that
+label text, rather than assumed at fixed D-G positions -- this is what
+lets the same parser read workbooks whose column layout shifts slightly
+across years. The five funding-source-group columns (H-W: each plan+actual,
+two with a "в т.ч." memo sub-column, and a free-text annotation cell some
+rows use instead of/alongside the structured columns) are *not* currently
+re-derived by label per year -- no pre-2026 ground truth for that block was
+available while writing this; extraction is defensive (out-of-range columns
+read as `None` instead of raising) but still assumes the 2026 sample's
+column positions. See BUDGET_FORMS.md "Known limitations".
+
+Currency: every monetary figure is converted to EUR at parse time (2 dp),
+using the fixed official rate (1 EUR = 1.95583 BGN, Bulgaria's euro-adoption
+rate on 2026-01-01). The workbook's own currency marker is used when present
+("Сумите са в EUR!" from 2026 on; older workbooks are expected to say
+"лв."/"лева" or nothing); when no marker is found, the period decides
+(< 2026-01 -> BGN, >= 2026-01 -> EUR). `currency` is always stored as
+"EUR"; `extra_json` additionally records `original_currency`,
+`conversion_rate`, and (when a conversion actually happened) the
+pre-conversion values under `extra_json["original"]`.
 """
 
 from __future__ import annotations
@@ -46,17 +69,12 @@ import openpyxl
 
 logger = logging.getLogger(__name__)
 
-#: spreadsheet columns (1-indexed) for the fixed left-hand block.
-COL_CODE = 1
-COL_NAME = 2
-COL_YEARS = 3
-COL_ESTIMATED_TOTAL = 4
-COL_SPENT_PRIOR = 5
-COL_PLAN_CURRENT = 6
-COL_SPENT_PERIOD = 7
+#: 1 EUR = 1.95583 BGN -- Bulgaria's official euro-adoption rate (2026-01-01).
+BGN_PER_EUR = 1.95583
 
 #: the five funding-source groups: (label, legal-basis/text col, plan col,
 #: actual col, optional "в т.ч." plan-subset col, optional actual-subset col)
+#: -- fixed positions, not label-derived; see module docstring.
 FUNDING_GROUPS: list[dict[str, Any]] = [
     {
         "key": "targeted_subsidies",
@@ -96,6 +114,18 @@ _CODE4_RE = re.compile(r"^\d{4}$")
 _GROUP_LABELS = {"Обект", "ППР", "ППР за сграда", "инженеринг", "сграда чрез изграждане"}
 _HEADER_DATA_START_HINT = "ОБЩО"
 
+#: label substrings (normalized: casefolded, whitespace collapsed) used to
+#: locate the four core monetary columns in the sheet's own header row.
+_LABEL_ESTIMATED_TOTAL = "сметна стойност"
+_LABEL_SPENT_PRIOR = "усвоено до"
+_LABEL_PLAN_CURRENT = "уточнен план"
+_LABEL_SPENT_PERIOD = "усвоено към"
+_LABEL_NAME_COL = "информация за наименованието"
+_LABEL_YEARS_COL = "година начало"
+
+_CURRENCY_EUR_RE = re.compile(r"\beur\b|евро", re.IGNORECASE)
+_CURRENCY_BGN_RE = re.compile(r"\bлв\b|лев[а-я]*", re.IGNORECASE)
+
 
 def _num(value: Any) -> float | None:
     if value is None or value == "":
@@ -115,51 +145,200 @@ def _text(value: Any) -> str | None:
     return text or None
 
 
-def _detect_currency(ws) -> str:
-    for row in ws.iter_rows(min_row=1, max_row=6, max_col=4, values_only=True):
+def _norm(value: Any) -> str:
+    """Casefold + collapse whitespace, for label matching that should be
+    resilient to the odd extra space/line-break in a merged header cell."""
+    if value is None:
+        return ""
+    return re.sub(r"\s+", " ", str(value)).strip().casefold()
+
+
+def _convert(value: float | None, original_currency: str) -> float | None:
+    """Convert a monetary value from `original_currency` to EUR (2 dp)."""
+    if value is None:
+        return None
+    if original_currency == "EUR":
+        return round(value, 2)
+    return round(value / BGN_PER_EUR, 2)
+
+
+class CapitalHeaderNotFound(ValueError):
+    """Raised when a sheet's core monetary-column header can't be located --
+    signals the sheet (or whole workbook) is not this report's layout."""
+
+
+def _find_core_columns(ws) -> dict[str, int]:
+    """Locate the header row and the core columns (code/name/years + the
+    four monetary fields) by their label text, scanning the first ~15 rows.
+
+    Returns a dict with keys `header_row`, `code_col`, `name_col`,
+    `years_col`, `estimated_total_col`, `spent_prior_col`,
+    `plan_current_col`, `spent_period_col`.
+
+    Raises `CapitalHeaderNotFound` if "Сметна стойност" (the one label
+    assumed stable across every layout variant seen) isn't found anywhere
+    in that scan window -- this is how a sheet that isn't this report form
+    at all (e.g. a misfiled B1 copy, or a text report) is told apart from a
+    merely-reflowed variant of it.
+    """
+    max_col = min(ws.max_column or 1, 30)
+    max_row = min(ws.max_row or 1, 15)
+
+    header_row: int | None = None
+    estimated_total_col: int | None = None
+    for r in range(1, max_row + 1):
+        for c in range(1, max_col + 1):
+            if _LABEL_ESTIMATED_TOTAL in _norm(ws.cell(row=r, column=c).value):
+                header_row, estimated_total_col = r, c
+                break
+        if header_row is not None:
+            break
+
+    if header_row is None:
+        raise CapitalHeaderNotFound(
+            f'label "Сметна стойност" not found in the first {max_row} rows'
+        )
+
+    cols: dict[str, int] = {
+        "header_row": header_row,
+        "estimated_total_col": estimated_total_col,
+        "code_col": 1,
+        "name_col": 2,
+        "years_col": 3,
+        "spent_prior_col": estimated_total_col + 1,
+        "plan_current_col": estimated_total_col + 2,
+        "spent_period_col": estimated_total_col + 3,
+    }
+
+    row_cells = [(c, _norm(ws.cell(row=header_row, column=c).value)) for c in range(1, max_col + 1)]
+
+    for c, norm_text in row_cells:
+        if not norm_text:
+            continue
+        if norm_text == "§":
+            cols["code_col"] = c
+        elif _LABEL_NAME_COL in norm_text:
+            cols["name_col"] = c
+        elif _LABEL_YEARS_COL in norm_text:
+            cols["years_col"] = c
+
+    # Re-derive the three monetary columns after estimated_total by label
+    # too, falling back to the "+1/+2/+3" guess above if a label is missing
+    # or reordered (keeps this tolerant of a shifted/merged column layout).
+    spent_prior_col = next(
+        (c for c, t in row_cells if c > estimated_total_col and _LABEL_SPENT_PRIOR in t), None
+    )
+    plan_current_col = next(
+        (c for c, t in row_cells if c > estimated_total_col and _LABEL_PLAN_CURRENT in t), None
+    )
+    spent_period_col = next(
+        (c for c, t in row_cells if c > estimated_total_col and _LABEL_SPENT_PERIOD in t), None
+    )
+    if spent_prior_col is not None:
+        cols["spent_prior_col"] = spent_prior_col
+    if plan_current_col is not None:
+        cols["plan_current_col"] = plan_current_col
+    if spent_period_col is not None:
+        cols["spent_period_col"] = spent_period_col
+
+    return cols
+
+
+def _detect_original_currency(ws, period: str | None) -> str:
+    """Detect the workbook's original currency: an explicit marker first
+    ("Сумите са в EUR!" from 2026 on; "лв."/"лева" in older workbooks),
+    falling back to the period (< 2026-01 -> BGN, >= 2026-01 -> EUR) when no
+    marker is found.
+    """
+    for row in ws.iter_rows(min_row=1, max_row=8, max_col=6, values_only=True):
         for cell in row:
-            if isinstance(cell, str) and "EUR" in cell.upper():
+            if not isinstance(cell, str):
+                continue
+            if _CURRENCY_EUR_RE.search(cell):
                 return "EUR"
-    return "EUR"  # the form is EUR-denominated for every month seen so far
+            if _CURRENCY_BGN_RE.search(cell):
+                return "BGN"
+
+    if period and period < "2026-01":
+        return "BGN"
+    if period:
+        return "EUR"
+    logger.warning(
+        "budget_capital: no currency marker and no period given for sheet %r; defaulting to BGN",
+        ws.title,
+    )
+    return "BGN"
 
 
-def _find_data_start(ws) -> int:
+def _find_data_start(ws, cols: dict[str, int]) -> int:
     """Return the 1-indexed row of the sheet's "ОБЩО" grand-total row."""
-    for r in range(1, min(ws.max_row, 20) + 1):
-        code = ws.cell(row=r, column=COL_CODE).value
-        name = ws.cell(row=r, column=COL_NAME).value
+    code_col, name_col = cols["code_col"], cols["name_col"]
+    start = cols["header_row"] + 1
+    for r in range(start, min(ws.max_row, start + 20) + 1):
+        code = ws.cell(row=r, column=code_col).value
+        name = ws.cell(row=r, column=name_col).value
         if code is None and isinstance(name, str) and name.strip() == _HEADER_DATA_START_HINT:
             return r
-    raise ValueError('could not locate the "ОБЩО" header row in the first 20 rows')
+    raise ValueError('could not locate the "ОБЩО" grand-total row after the header')
 
 
-def _funding_extra(ws, row: int) -> dict[str, Any]:
+def _funding_extra(ws, row: int, original_currency: str) -> dict[str, Any]:
+    """Read the five funding-source-group columns for one object row.
+
+    Defensive against a narrower sheet than the 2026 sample (a column past
+    `ws.max_column` reads as `None` rather than raising).
+    """
+    max_col = ws.max_column or 0
     funding: dict[str, Any] = {}
+    funding_raw: dict[str, Any] = {}
     for group in FUNDING_GROUPS:
+
+        def _cell(col_key: str, group: dict[str, Any] = group) -> Any:
+            col = group.get(col_key)
+            if col is None or col > max_col:
+                return None
+            return ws.cell(row=row, column=col).value
+
+        raw_plan = _num(_cell("plan_col"))
+        raw_actual = _num(_cell("actual_col"))
+        raw_plan_subset = _num(_cell("plan_subset_col")) if "plan_subset_col" in group else None
+        raw_actual_subset = (
+            _num(_cell("actual_subset_col")) if "actual_subset_col" in group else None
+        )
+
         entry: dict[str, Any] = {
-            "plan": _num(ws.cell(row=row, column=group["plan_col"]).value),
-            "actual": _num(ws.cell(row=row, column=group["actual_col"]).value),
+            "plan": _convert(raw_plan, original_currency),
+            "actual": _convert(raw_actual, original_currency),
         }
+        raw_entry: dict[str, Any] = {"plan": raw_plan, "actual": raw_actual}
         if "plan_subset_col" in group:
-            entry["plan_subset"] = _num(ws.cell(row=row, column=group["plan_subset_col"]).value)
+            entry["plan_subset"] = _convert(raw_plan_subset, original_currency)
+            raw_entry["plan_subset"] = raw_plan_subset
         if "actual_subset_col" in group:
-            entry["actual_subset"] = _num(
-                ws.cell(row=row, column=group["actual_subset_col"]).value
-            )
+            entry["actual_subset"] = _convert(raw_actual_subset, original_currency)
+            raw_entry["actual_subset"] = raw_actual_subset
         if "note_col" in group:
-            note = _text(ws.cell(row=row, column=group["note_col"]).value)
+            note = _text(_cell("note_col"))
             if note:
                 entry["note"] = note
         funding[group["key"]] = entry
-    return funding
+        funding_raw[group["key"]] = raw_entry
+
+    return {"funding": funding, "funding_raw": funding_raw}
 
 
-def parse_sheet(ws, period: str, currency: str) -> list[dict[str, Any]]:
-    """Parse a single sheet of the capital-expenditure workbook into rows."""
+def parse_sheet(ws, period: str, original_currency: str) -> list[dict[str, Any]]:
+    """Parse a single sheet of the capital-expenditure workbook into rows.
+
+    Raises `CapitalHeaderNotFound` (caught by the caller) if the sheet isn't
+    this report's layout at all.
+    """
     unit = ws.title
     rows: list[dict[str, Any]] = []
 
-    start_row = _find_data_start(ws)
+    cols = _find_core_columns(ws)
+    start_row = _find_data_start(ws, cols)
+    rate = BGN_PER_EUR
 
     current_paragraph: str | None = None
     current_paragraph_name: str | None = None
@@ -170,24 +349,39 @@ def parse_sheet(ws, period: str, currency: str) -> list[dict[str, Any]]:
     current_group_label: str | None = None
 
     def base_row(row_type: str) -> dict[str, Any]:
+        raw_estimated = _num(ws.cell(row=r, column=cols["estimated_total_col"]).value)
+        raw_spent_prior = _num(ws.cell(row=r, column=cols["spent_prior_col"]).value)
+        raw_plan_current = _num(ws.cell(row=r, column=cols["plan_current_col"]).value)
+        raw_spent_period = _num(ws.cell(row=r, column=cols["spent_period_col"]).value)
+
+        extra: dict[str, Any] = {"row_type": row_type, "original_currency": original_currency}
+        if original_currency != "EUR":
+            extra["conversion_rate"] = rate
+            extra["original"] = {
+                "estimated_total": raw_estimated,
+                "spent_prior": raw_spent_prior,
+                "plan_current": raw_plan_current,
+                "spent_period": raw_spent_period,
+            }
+
         return {
             "period": period,
             "unit": unit,
             "function_code": current_function,
             "paragraph": current_paragraph,
             "subparagraph": current_subparagraph,
-            "years": _text(ws.cell(row=r, column=COL_YEARS).value),
-            "estimated_total": _num(ws.cell(row=r, column=COL_ESTIMATED_TOTAL).value),
-            "spent_prior": _num(ws.cell(row=r, column=COL_SPENT_PRIOR).value),
-            "plan_current": _num(ws.cell(row=r, column=COL_PLAN_CURRENT).value),
-            "spent_period": _num(ws.cell(row=r, column=COL_SPENT_PERIOD).value),
-            "currency": currency,
-            "extra_json": {"row_type": row_type},
+            "years": _text(ws.cell(row=r, column=cols["years_col"]).value),
+            "estimated_total": _convert(raw_estimated, original_currency),
+            "spent_prior": _convert(raw_spent_prior, original_currency),
+            "plan_current": _convert(raw_plan_current, original_currency),
+            "spent_period": _convert(raw_spent_period, original_currency),
+            "currency": "EUR",
+            "extra_json": extra,
         }
 
     for r in range(start_row, ws.max_row + 1):
-        code_raw = ws.cell(row=r, column=COL_CODE).value
-        name_raw = ws.cell(row=r, column=COL_NAME).value
+        code_raw = ws.cell(row=r, column=cols["code_col"]).value
+        name_raw = ws.cell(row=r, column=cols["name_col"]).value
         code = _text(code_raw) if isinstance(code_raw, str) else code_raw
         name = _text(name_raw)
 
@@ -275,7 +469,10 @@ def parse_sheet(ws, period: str, currency: str) -> list[dict[str, Any]]:
         row["object_name"] = name
         if current_group_label:
             row["extra_json"]["group_label"] = current_group_label
-        row["extra_json"]["funding"] = _funding_extra(ws, r)
+        funding = _funding_extra(ws, r, original_currency)
+        row["extra_json"]["funding"] = funding["funding"]
+        if original_currency != "EUR":
+            row["extra_json"]["original"]["funding"] = funding["funding_raw"]
         rows.append(row)
 
     return rows
@@ -316,25 +513,43 @@ def parse_budget_capital(path: str | Path, period: str | None = None) -> dict[st
     "план/отчет за периода" header text when given (callers normally pass
     the period already recorded for the source `BudgetReport`).
 
-    Returns `{"rows": [...], "mismatches": [...]}`.
+    Returns `{"rows": [...], "mismatches": [...], "unsupported": str | None}`.
+    `unsupported` is set (and `rows`/`mismatches` are empty) when the
+    workbook doesn't match this report's layout at all -- e.g. a sheet with
+    no "Сметна стойност" label anywhere, such as a misfiled B1 copy or a
+    text report -- rather than forcing a parse onto the wrong document.
     """
-    wb = openpyxl.load_workbook(path, data_only=True)
+    path = Path(path)
+    try:
+        wb = openpyxl.load_workbook(path, data_only=True)
+    except Exception as exc:  # noqa: BLE001 -- any file this brittle format rejects
+        return {"rows": [], "mismatches": [], "unsupported": f"could not open workbook: {exc}"}
 
     rows: list[dict[str, Any]] = []
+    sheet_errors: dict[str, str] = {}
     for sheet_name in wb.sheetnames:
         ws = wb[sheet_name]
-        currency = _detect_currency(ws)
         sheet_period = period or _infer_period(ws) or ""
+        original_currency = _detect_original_currency(ws, sheet_period or period)
         try:
-            rows.extend(parse_sheet(ws, sheet_period, currency))
+            rows.extend(parse_sheet(ws, sheet_period, original_currency))
+        except CapitalHeaderNotFound as exc:
+            sheet_errors[sheet_name] = str(exc)
+            logger.warning("budget_capital: sheet %r is not this report's layout: %s", sheet_name, exc)
         except ValueError as exc:
+            sheet_errors[sheet_name] = str(exc)
             logger.warning("budget_capital: could not parse sheet %r: %s", sheet_name, exc)
+
+    unsupported = None
+    if not rows and sheet_errors:
+        reasons = "; ".join(f"{name}: {err}" for name, err in sheet_errors.items())
+        unsupported = f"no sheet matched this report's layout ({reasons})"
 
     mismatches = validate_function_subtotals(rows)
     for message in mismatches:
         logger.warning("budget_capital: function-subtotal mismatch: %s", message)
 
-    return {"rows": rows, "mismatches": mismatches}
+    return {"rows": rows, "mismatches": mismatches, "unsupported": unsupported}
 
 
 _PERIOD_RE = re.compile(r"(\d{4})\s*(Януари|Февруари|Март|Април|Май|Юни|Юли|Август|"
@@ -347,10 +562,10 @@ _BG_MONTHS = {
 
 def _infer_period(ws) -> str | None:
     """Best-effort period inference from the "план/отчет за периода" header
-    cell (row 3, col C in the sample), e.g. "план/отчет за периода:  2026
-    Август" -> "2026-08".
+    cell (row 3, col C in the 2026 sample), e.g. "план/отчет за периода:
+    2026 Август" -> "2026-08".
     """
-    for row in ws.iter_rows(min_row=1, max_row=4, max_col=4, values_only=True):
+    for row in ws.iter_rows(min_row=1, max_row=8, max_col=8, values_only=True):
         for cell in row:
             if not isinstance(cell, str):
                 continue

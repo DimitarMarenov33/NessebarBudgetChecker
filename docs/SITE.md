@@ -126,15 +126,25 @@ decimals for amounts. CSV/JSON exports stay raw numeric. `sevkey`/`sevlabel`
 normalise any severity string to `high`/`warning`/`info`.
 
 **Layout.** `base.html` holds the sticky 56px nav (collapses to a
-horizontally scrollable link row on phones — no JS menu), and the footer.
-`_macros.html` holds the shared pieces: `page_head`, `figure` (big number
-with a smaller unit), `meter`, `chip`/`sev_chip`, `flag_row`, `search`, and
-`vbar_chart`. `_budget_body.html` is shared by `budget/index.html` and
-`budget/<period>.html`. Tables: hairline rows, right-aligned tabular
-numbers, header row sticky under the nav on ≥1000px; on phones the contracts
-and flags tables turn into stacked rows (`.table--stack`), the others scroll
-horizontally. Budget-by-function and cash-by-paragraph are tables with
-inline meters rather than a separate chart + duplicate table.
+horizontally scrollable link row on phones — no JS menu — with a `mask-image`
+fade on the right edge hinting there's more, and a tiny inline script that
+scrolls the active link into view on load), and the footer. `_macros.html`
+holds the shared pieces: `page_head`, `figure` (big number with a smaller
+unit), `meter`, `chip`/`sev_chip`, `flag_row`, `search`, `vbar_chart`, and
+`cell_label` (a muted field label shown only above a value in the phone
+stacked-table layout, via the `.cell-label` class — hidden on desktop, where
+the column header already says it). `_budget_body.html` is shared by
+`budget/index.html` and `budget/<period>.html`. Tables: hairline rows,
+right-aligned tabular numbers, header row sticky under the nav on ≥1000px;
+on phones (≤719px) every data table (`.table--stack`) turns into stacked
+card-rows instead of scrolling sideways — primary text on top, the rest as a
+2-column label/value grid underneath (labels from `cell_label` or from
+context, per `.table--<name>` overrides next to the `.table--stack` rules in
+`style.css`). Budget-by-function and cash-by-paragraph keep their inline
+meters, which become full-width rows under the label on phones instead of a
+separate chart + duplicate table. Touch targets (nav links, buttons, filter
+selects, table row links) are ≥44px and inputs use 16px text on phones
+(≤719px) only — the ≥1000px desktop layout is untouched by any of this.
 
 **Charts** are hand-written inline SVG (no library, no external request).
 `vbar_chart` uses an SVG without a `viewBox`: x/width in percent so it fills

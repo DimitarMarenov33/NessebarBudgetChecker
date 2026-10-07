@@ -37,6 +37,7 @@ from nessebar_budget.analysis.rules import (
     annex_growth_flags,
     contractor_concentration_flags,
     late_publication_flags,
+    missing_quantity_flags,
     missing_value_flags,
     overspend_vs_plan_flags,
     plan_jump_flags,
@@ -153,6 +154,7 @@ FULL_RULE_NAMES = (
     "overspend_vs_plan",
     "plan_jump",
     "unmatched_spending",
+    "missing_quantity",
 )
 
 
@@ -202,6 +204,7 @@ def _collect_flags(
             objects_history, thresholds, dataset_first_period=dataset_first_period
         )
     flags += unmatched_spending_flags(objects_latest, match_candidates, thresholds)
+    flags += missing_quantity_flags(contracts, objects_latest, thresholds)
     return flags
 
 

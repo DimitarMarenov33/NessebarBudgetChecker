@@ -33,17 +33,17 @@
     <p class="block__sub">Похарчено спрямо плана за {{ year }} по функционална класификация.</p>
   </div>
   <div class="table-wrap">
-  <table class="table table--functions">
+  <table class="table table--functions table--stack">
     <thead><tr><th>Функция</th><th class="col-meter">Изпълнение</th><th class="num">Похарчено</th><th class="num">План</th></tr></thead>
     <tbody>
     {% for f in data.function_totals %}
     <tr>
       <td>{{ f.name }}</td>
       <td class="col-meter">
-        <span class="share">{{ m.meter(f.pct_executed, "warning" if (f.pct_executed or 0) > 1 else "accent") }}<span class="tnum">{{ f.pct_executed | pct if f.pct_executed is not none else "—" }}</span></span>
+        {{ m.cell_label("Изпълнение") }}<span class="share">{{ m.meter(f.pct_executed, "warning" if (f.pct_executed or 0) > 1 else "accent") }}<span class="tnum">{{ f.pct_executed | pct if f.pct_executed is not none else "—" }}</span></span>
       </td>
-      <td class="num">{{ f.spent_period | eur }}</td>
-      <td class="num">{{ f.plan_current | eur }}</td>
+      <td class="num">{{ m.cell_label("Похарчено") }}{{ f.spent_period | eur }}</td>
+      <td class="num">{{ m.cell_label("План") }}{{ f.plan_current | eur }}</td>
     </tr>
     {% endfor %}
     </tbody>
@@ -92,7 +92,7 @@
     {{ m.count(data.object_count) }}
   </div>
   <div class="table-wrap">
-  <table class="table" data-sortable data-filterable>
+  <table class="table table--objects table--stack" data-sortable data-filterable>
     <thead>
       <tr>
         <th data-sort="none" class="col-func">Функция</th>
@@ -108,10 +108,10 @@
     <tr>
       <td class="muted-strong"><span class="clamp-2">{{ o.function_name }}</span></td>
       <td><span class="clamp-2">{{ o.object_name }}</span></td>
-      <td class="num" data-sort-value="{{ o.estimated_total or 0 }}">{{ o.estimated_total | eur }}</td>
-      <td class="num" data-sort-value="{{ o.plan_current or 0 }}">{{ o.plan_current | eur }}</td>
-      <td class="num" data-sort-value="{{ o.spent_period or 0 }}">{{ o.spent_period | eur }}</td>
-      <td class="num{% if (o.pct_executed or 0) > 1 %} is-over{% endif %}" data-sort-value="{{ o.pct_executed or 0 }}">{{ o.pct_executed | pct if o.pct_executed is not none else "—" }}</td>
+      <td class="num" data-sort-value="{{ o.estimated_total or 0 }}">{{ m.cell_label("Обща стойност") }}{{ o.estimated_total | eur }}</td>
+      <td class="num" data-sort-value="{{ o.plan_current or 0 }}">{{ m.cell_label("План " ~ year) }}{{ o.plan_current | eur }}</td>
+      <td class="num" data-sort-value="{{ o.spent_period or 0 }}">{{ m.cell_label("Похарчено") }}{{ o.spent_period | eur }}</td>
+      <td class="num{% if (o.pct_executed or 0) > 1 %} is-over{% endif %}" data-sort-value="{{ o.pct_executed or 0 }}">{{ m.cell_label("Изпълнение") }}{{ o.pct_executed | pct if o.pct_executed is not none else "—" }}</td>
     </tr>
     {% endfor %}
     </tbody>

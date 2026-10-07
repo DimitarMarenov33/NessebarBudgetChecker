@@ -38,6 +38,14 @@
     <a class="btn btn--ghost btn--sm nav__data" href="{{ root }}data/index.html"{% if active == 'data' %} aria-current="page"{% endif %}>Данни</a>
   </div>
 </header>
+<script>
+(function () {
+  var current = document.querySelector(".nav__links a[aria-current='page']");
+  if (current && current.scrollIntoView) {
+    current.scrollIntoView({ block: "nearest", inline: "center" });
+  }
+})();
+</script>
 <main id="main">
 {% block content %}{% endblock %}
 </main>

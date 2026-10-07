@@ -177,6 +177,190 @@ def test_eop_net_date_parsing() -> None:
     assert parsed.tzinfo is None  # naive, stored as UTC
 
 
+def test_eop_fetch_sets_cpv_code_and_notice_text_from_tender_detail(
+    eop_scraper: EopScraper,
+) -> None:
+    """The mocked `GetPublishedTenderDetails` response for tender 595341 (see
+    the `eop_scraper` fixture) is a *real* captured payload with a full
+    `TenderPublicationDetails[].HtmlPreview` -- confirming `cpv_code` and
+    `raw_json.tender_detail.notice_text` get populated end-to-end via
+    `EopScraper.fetch()`, not just via `extract_notice` in isolation.
+    """
+    records = eop_scraper.fetch()
+    by_id = {r["source_id"]: r for r in records}
+
+    contract_266822 = by_id["266822"]
+    assert contract_266822["cpv_code"] == "33700000"
+    tender_detail = contract_266822["raw_json"]["tender_detail"]
+    assert "notices" in tender_detail
+    assert tender_detail["notice_text"]
+    assert "спомагателно-хигиенни материали" in tender_detail["notice_text"]
+    # full_text must never land in the DB-bound raw_json (see `_build_notices`).
+    assert all("full_text" not in n for n in tender_detail["notices"])
+    assert all("HtmlPreview" not in n for n in tender_detail["notices"])
+
+    # Tender ids with no real cached detail (the fixture's minimal stand-in,
+    # see the `eop_scraper` handler) have no publications to parse -- this
+    # must degrade to no cpv_code/notices, not raise.
+    open_tender = by_id["605199"]
+    assert open_tender["cpv_code"] is None
+    assert "notices" not in (open_tender["raw_json"].get("tender_detail") or {})
+
+
+# ---------------------------------------------------------------------------
+# EOP notice-HTML parsing (`extract_notice` / `_build_notices`)
+# ---------------------------------------------------------------------------
+
+
+def test_extract_notice_parses_real_legacy_multilot_sample() -> None:
+    """`data/samples/eop_notice_sample.html` is a trimmed-down *real*
+    `HtmlPreview` (legacy/ЗОП form, from a real Несебър supervision-services
+    procedure) -- kept small (see docs/sources/EOP_API.md) but with its
+    buyer section, CPV, short description, and one full multi-paragraph lot
+    description intact.
+    """
+    from nessebar_budget.scrapers.eop import extract_notice
+
+    html = (SAMPLES_DIR / "eop_notice_sample.html").read_text(encoding="utf-8")
+    parsed = extract_notice(html)
+
+    assert parsed["notice_type"] == "Обявление за поръчка"
+    assert parsed["cpv_main"] == "71521000"
+    assert parsed["cpv_codes"] == ["71521000", "71520000"]
+    assert parsed["short_description"] is not None
+    assert parsed["short_description"].startswith("ОП №1")
+    # The real lot description spans many sibling `div.name` paragraphs in
+    # the source HTML -- naively taking only the first would truncate it.
+    assert len(parsed["lot_descriptions"]) == 1
+    lot_description = parsed["lot_descriptions"][0]
+    assert lot_description.startswith("Упражняване на строителен надзор")
+    assert len(lot_description) > 1000
+    assert parsed["estimated_value"] == "72450 BGN"
+    assert 0 < len(parsed["full_text"]) <= 30_000
+    assert "Несебър" in parsed["full_text"]
+
+
+def test_extract_notice_parses_eforms_fields_by_label() -> None:
+    """The newer EU eForms notice generation (`PublicationFormType` 54/65/...)
+    reuses the same row/div markup but folds the field code into the label
+    text itself (e.g. ``Описание(BT-24-Procedure)``) and never writes the
+    literal string "CPV" anywhere -- the CPV field is instead labeled
+    "Основна класификация(BT-262-...)" with a "<code> - <description>" value.
+    This is a hand-written but structurally faithful minimal eForms snippet
+    (see docs/sources/EOP_API.md for the real-sample fields it mirrors).
+    """
+    from nessebar_budget.scrapers.eop import extract_notice
+
+    html = """
+    <html><body>
+    <div style="text-align:right">
+        <p class="header__form">Обявление за поръчка &#8211; Общата директива, стандартен режим</p>
+    </div>
+    <table class="maintable">
+        <tr><td class="first__coll"></td><td><div class="section__name">Описание</div></td></tr>
+        <tr><td style="width: 70px;"></td><td class="td__border">
+            <div class="label__name">Описание(BT-24-Procedure)</div>
+            <div class="name">В предмета на поръчката са включени следните дейности: доставка на гуми.</div>
+        </td></tr>
+        <tr><td class="first__coll"></td><td><div class="section__name">Основна класификация</div></td></tr>
+        <tr><td style="width: 70px;"></td><td class="td__border">
+            <div class="label__name">Основна класификация(BT-262-Procedure)</div>
+            <div class="name">34350000 - Външни гуми с лек и тежък режим на експлоатация</div>
+        </td></tr>
+        <tr><td class="first__coll"></td><td><div class="section__name">Обхват на поръчката</div></td></tr>
+        <tr><td style="width: 70px;"></td><td class="td__border">
+            <div class="label__name">Прогнозна стойност, без да се включва ДДС(BT-27-Procedure)</div>
+            <div class="name">650000.00 BGN</div>
+        </td></tr>
+    </table>
+    </body></html>
+    """
+    parsed = extract_notice(html)
+
+    assert parsed["notice_type"] == "Обявление за поръчка – Общата директива, стандартен режим"
+    assert parsed["cpv_main"] == "34350000"
+    assert parsed["cpv_codes"] == ["34350000"]
+    assert parsed["short_description"] == (
+        "В предмета на поръчката са включени следните дейности: доставка на гуми."
+    )
+    assert parsed["lot_descriptions"] == []
+    assert parsed["estimated_value"] == "650000.00 BGN"
+
+
+def test_extract_notice_joins_multiparagraph_value_without_truncation() -> None:
+    from nessebar_budget.scrapers.eop import extract_notice
+
+    html = """
+    <table class="maintable">
+        <tr><td class="first__coll">II.2.4)</td>
+            <td><div class="section__name">Описание на обществената поръчка</div></td></tr>
+        <tr><td style="width: 70px;"></td><td class="pdffirst__row td__border">
+            <div class="name">Първи параграф.</div>
+            <div class="name">Втори параграф.</div>
+        </td></tr>
+    </table>
+    """
+    parsed = extract_notice(html)
+    assert parsed["lot_descriptions"] == ["Първи параграф. Втори параграф."]
+
+
+def test_extract_notice_degrades_gracefully_on_empty_or_unrecognized_html() -> None:
+    from nessebar_budget.scrapers.eop import extract_notice
+
+    for html in ("", "<html><body>not a notice</body></html>"):
+        parsed = extract_notice(html)
+        assert parsed["notice_type"] is None
+        assert parsed["cpv_main"] is None
+        assert parsed["cpv_codes"] == []
+        assert parsed["short_description"] is None
+        assert parsed["lot_descriptions"] == []
+        assert parsed["estimated_value"] is None
+
+
+def test_build_notices_strips_full_text_and_dicts_but_keeps_scalars() -> None:
+    from nessebar_budget.scrapers.eop import _build_notices, _tender_detail_with_notices
+
+    html = (SAMPLES_DIR / "eop_notice_sample.html").read_text(encoding="utf-8")
+    detail = {
+        "TenderName": "СМР на обект",
+        "TenderPublicationDetails": [
+            {
+                "PublicationFormType": 2,
+                "TenderPublicationId": 426210,
+                # A nested dict/list, like the real
+                # `TenderPublicationAuthorityResultCollection` -- must be
+                # dropped from the notice entry, same as `_slim`.
+                "SomeNestedThing": {"a": 1},
+                "HtmlPreview": html,
+            }
+        ],
+    }
+
+    notices, notice_text = _build_notices(detail)
+    assert len(notices) == 1
+    notice = notices[0]
+    assert notice["TenderPublicationId"] == 426210
+    assert "HtmlPreview" not in notice
+    assert "full_text" not in notice
+    assert "SomeNestedThing" not in notice
+    assert notice["cpv_main"] == "71521000"
+    assert notice_text  # non-empty: short_description + lot_descriptions
+    assert len(notice_text) <= 8_000
+
+    slim_detail, cpv_code = _tender_detail_with_notices(detail)
+    assert cpv_code == "71521000"
+    assert slim_detail["TenderName"] == "СМР на обект"
+    assert slim_detail["notices"] == notices
+    assert slim_detail["notice_text"] == notice_text
+
+
+def test_tender_detail_with_notices_handles_missing_or_empty_detail() -> None:
+    from nessebar_budget.scrapers.eop import _tender_detail_with_notices
+
+    assert _tender_detail_with_notices(None) == (None, None)
+    assert _tender_detail_with_notices({}) == ({}, None)
+
+
 # ---------------------------------------------------------------------------
 # SIGMA
 # ---------------------------------------------------------------------------

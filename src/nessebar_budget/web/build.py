@@ -765,6 +765,7 @@ RULE_LABELS = {
     "unmatched_spending": "Разход без открит договор",
     "annex_growth": "Нарастване чрез анекси",
     "missing_value": "Липсваща стойност",
+    "missing_quantity": "Липсващо количество",
 }
 
 

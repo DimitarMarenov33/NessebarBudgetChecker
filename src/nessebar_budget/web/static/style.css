@@ -192,6 +192,11 @@ code {
   font-weight: 400;
 }
 
+/* Muted field label shown only above a value in the phone stacked-table
+   layout (see `.table--stack` below); the desktop column header already
+   says this, so it stays hidden there. */
+.cell-label { display: none; }
+
 .clamp-2 {
   display: -webkit-box;
   -webkit-box-orient: vertical;
@@ -265,6 +270,13 @@ code {
 .btn--ghost:hover, .btn--ghost[aria-current="page"] { background: var(--surface-2); border-color: var(--border-2); }
 .btn--sm { height: 28px; padding: 0 12px; font-size: 13px; }
 
+@media (max-width: 719px) {
+  /* ≥44px tap target on phones; min-height clamps the used height up from
+     the fixed 40px/28px above without touching desktop. */
+  .btn { min-height: 44px; }
+  .btn--sm { min-height: 44px; padding: 0 14px; }
+}
+
 /* ------------------------------------------------------------------ nav */
 .nav {
   position: sticky;
@@ -313,6 +325,18 @@ code {
 }
 .nav__links::-webkit-scrollbar { display: none; }
 
+@media (max-width: 999px) {
+  /* Subtle right-edge fade hinting there are more links to scroll to. A
+     mask on the scroll container itself fades its own rendered content
+     (not an overlay color, which would have to match whatever page
+     background happens to sit behind the translucent nav) — so it reads
+     correctly regardless of light/dark theme or scroll position. */
+  .nav__links {
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent 100%);
+    mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent 100%);
+  }
+}
+
 .nav__links a {
   flex: none;
   padding: 5px 10px;
@@ -326,6 +350,20 @@ code {
 .nav__links a:first-child { margin-left: -10px; }
 .nav__links a:hover { color: var(--text); }
 .nav__links a[aria-current="page"] { color: var(--text); background: var(--surface-2); }
+
+@media (max-width: 999px) {
+  /* Comfortable ≥44px tap targets for the horizontally-scrolling phone/
+     tablet nav row and its "Данни" button; the ≥1000px desktop nav below
+     keeps its original compact sizing untouched. */
+  .nav__links a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    padding: 0 12px;
+  }
+  .nav__links a:first-child { margin-left: -12px; }
+  .nav__data.btn--sm { min-height: 44px; padding: 0 16px; }
+}
 
 @media (min-width: 1000px) {
   .nav__inner {
@@ -835,6 +873,10 @@ a.issue:hover .issue__chev { color: var(--text); }
 .segmented a:hover { color: var(--text); }
 .segmented a[aria-current="page"] { background: var(--surface-2); color: var(--text); box-shadow: inset 0 0 0 1px var(--border-2); }
 
+@media (max-width: 719px) {
+  .segmented a { display: inline-flex; align-items: center; min-height: 44px; }
+}
+
 /* ------------------------------------------------------------------ definition lists */
 .facts { border-top: 1px solid var(--border); }
 .facts__row {
@@ -901,6 +943,12 @@ a.issue:hover .issue__chev { color: var(--text); }
 .input::placeholder { color: var(--text-3); }
 .input:hover { border-color: var(--text-3); }
 .input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--focus-ring); }
+
+@media (max-width: 719px) {
+  /* 16px stops iOS Safari auto-zooming on focus; min-height gives a ≥44px
+     tap target for the search box and filter selects. */
+  .input { min-height: 44px; font-size: 16px; }
+}
 
 .search {
   position: relative;
@@ -1051,6 +1099,13 @@ a.issue:hover .issue__chev { color: var(--text); }
   }
   .table--stack td { display: block; padding: 0 !important; border: 0; background: none !important; }
   .table--stack td.num { text-align: right; }
+  /* `.col-*` utility classes set a desktop-only `width: 1%`/`22%` shrink-to-fit
+     hint for normal table layout; a couple of tables also carry that class
+     on the `<td>` (not just the `<th>`), which — once the td becomes a CSS
+     grid item below — resolves that percentage against the grid area and
+     shrinks the cell to a few px, pushing flex content (e.g. a meter with
+     `justify-content: flex-end`) off-screen. Reset it for stacked rows. */
+  .table--stack td[class*="col-"] { width: auto; min-width: 0; }
   .table--stack td[data-label]::before {
     content: attr(data-label) " ";
     color: var(--text-2);
@@ -1075,6 +1130,58 @@ a.issue:hover .issue__chev { color: var(--text); }
   .table--flags td:nth-child(5) { grid-area: date; font-size: 12px; }
   .table--flags td.msg { min-width: 0; }
   .table--flags td:nth-child(4) .muted { display: none; }
+
+  /* Every other data table: same card-row idea, generalised — primary text
+     on top (full row), remaining fields as a 2-column label/value grid
+     underneath via `.cell-label`. A bigger tap target on the title link,
+     without changing its visual size (negative margin cancels the padding). */
+  .table--stack .cell-label {
+    display: block;
+    margin-bottom: 2px;
+    font-size: 11px;
+    font-weight: 400;
+    color: var(--text-2);
+  }
+  .table--stack a.row-link { display: block; padding: 8px 0; margin: -8px 0; }
+
+  .table--contractors tr { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-areas: "name name" "count value" "share share" "single single"; }
+  .table--contractors td:nth-child(1) { grid-area: name; }
+  .table--contractors td:nth-child(2) { grid-area: count; text-align: left; }
+  .table--contractors td:nth-child(3) { grid-area: value; }
+  .table--contractors td:nth-child(4) { grid-area: share; text-align: left; }
+  .table--contractors td:nth-child(5) { grid-area: single; text-align: left; }
+
+  .table--contractor-contracts tr { grid-template-areas: "title title" "date value" "bids bids"; }
+  .table--contractor-contracts td:nth-child(1) { grid-area: date; font-size: 12px; }
+  .table--contractor-contracts td:nth-child(2) { grid-area: title; }
+  .table--contractor-contracts td:nth-child(3) { grid-area: value; }
+  .table--contractor-contracts td:nth-child(4) { grid-area: bids; text-align: left; }
+
+  .table--functions tr { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-areas: "name name" "meter meter" "spent plan"; }
+  .table--functions td:nth-child(1) { grid-area: name; }
+  .table--functions td.col-meter { grid-area: meter; text-align: left; }
+  .table--functions td:nth-child(3) { grid-area: spent; text-align: left; }
+  .table--functions td:nth-child(4) { grid-area: plan; }
+
+  .table--objects tr { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-areas: "func func" "obj obj" "total plan" "spent pct"; }
+  .table--objects td:nth-child(1) { grid-area: func; font-size: 12px; }
+  .table--objects td:nth-child(2) { grid-area: obj; }
+  .table--objects td:nth-child(3) { grid-area: total; text-align: left; }
+  .table--objects td:nth-child(4) { grid-area: plan; }
+  .table--objects td:nth-child(5) { grid-area: spent; text-align: left; }
+  .table--objects td:nth-child(6) { grid-area: pct; }
+
+  .table--bars tr { grid-template-columns: auto minmax(0, 1fr); grid-template-areas: "code name" "meter meter" "amount amount"; }
+  .table--bars td:nth-child(1) { grid-area: code; padding-right: var(--s-2) !important; }
+  .table--bars td:nth-child(2) { grid-area: name; }
+  .table--bars td.col-meter { grid-area: meter; text-align: left; }
+  .table--bars td:nth-child(4) { grid-area: amount; text-align: left; }
+
+  .table--minfin tr { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-areas: "name name" "ness med" "n n"; }
+  .table--minfin td:nth-child(1) { grid-area: name; }
+  .table--minfin td:nth-child(2) { grid-area: ness; text-align: left; }
+  .table--minfin td:nth-child(3) { grid-area: med; }
+  .table--minfin td:nth-child(4) { grid-area: n; text-align: left; font-size: 12px; }
 }
 
 @media (min-width: 1000px) {

@@ -30,15 +30,15 @@
       <p class="block__sub">Касови разходи по §-параграф от началото на годината, подредени по размер.</p>
     </div>
     <div class="table-wrap">
-    <table class="table table--bars">
+    <table class="table table--bars table--stack">
       <thead><tr><th class="col-par">§</th><th>Наименование</th><th class="col-meter"><span class="visually-hidden">Относителен размер</span></th><th class="num">Разход</th></tr></thead>
       <tbody>
       {% for r in latest.expense_paragraphs %}
       <tr>
         <td class="muted tnum">{{ r.paragraph }}</td>
         <td>{{ r.name }}</td>
-        <td class="col-meter">{{ m.meter((r.actual_ytd or 0) / max_cat if max_cat else 0, "accent" if loop.first else "muted") }}</td>
-        <td class="num">{{ r.actual_ytd | eur }}</td>
+        <td class="col-meter">{{ m.cell_label("Дял от разходите") }}{{ m.meter((r.actual_ytd or 0) / max_cat if max_cat else 0, "accent" if loop.first else "muted") }}</td>
+        <td class="num">{{ m.cell_label("Разход") }}{{ r.actual_ytd | eur }}</td>
       </tr>
       {% endfor %}
       </tbody>
@@ -53,15 +53,15 @@
       <p class="block__sub">Показатели на Министерството на финансите за {{ minfin[0].period_label }}, сравнени с медианата за всички общини.</p>
     </div>
     <div class="table-wrap">
-    <table class="table">
+    <table class="table table--minfin table--stack">
       <thead><tr><th>Показател</th><th class="num">Несебър</th><th class="num">Медиана</th><th class="num">Общини</th></tr></thead>
       <tbody>
       {% for row in minfin %}
       <tr>
         <td>{{ row.title }}</td>
-        <td class="num strong">{{ row.nessebar | pct }}</td>
-        <td class="num">{{ row.median | pct }}</td>
-        <td class="num muted">{{ row.n_municipalities | num }}</td>
+        <td class="num strong">{{ m.cell_label("Несебър") }}{{ row.nessebar | pct }}</td>
+        <td class="num">{{ m.cell_label("Медиана") }}{{ row.median | pct }}</td>
+        <td class="num muted">{{ m.cell_label("Общини") }}{{ row.n_municipalities | num }}</td>
       </tr>
       {% endfor %}
       </tbody>

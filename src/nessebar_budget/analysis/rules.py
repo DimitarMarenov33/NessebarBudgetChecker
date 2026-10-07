@@ -29,6 +29,7 @@ from `docs/law/*.txt` (see `docs/law/INDEX.md`).
 from __future__ import annotations
 
 import datetime as dt
+import html
 import re
 from collections import defaultdict
 from itertools import pairwise
@@ -345,7 +346,7 @@ def single_bidder_flags(
                 "rule": "single_bidder",
                 "severity": severity,
                 "message": (
-                    f"Поръчка „{title}“ на стойност {value:,.0f} EUR е възложена на "
+                    f"Поръчка „{title}“ на стойност {value:,.0f} € е възложена на "
                     f"{contractor} при подадена само 1 оферта — изисква обяснение защо "
                     "конкуренцията е била толкова ограничена."
                 ),
@@ -413,7 +414,7 @@ def contractor_concentration_flags(
                 "rule": "contractor_concentration",
                 "severity": "info",
                 "message": (
-                    f"{name} е сключил(а) {n} договора за общо {contractor_eur:,.0f} EUR "
+                    f"{name} е сключил(а) {n} договора за общо {contractor_eur:,.0f} € "
                     f"с общината през последните ~24 месеца — {share * 100:.0f}% от общата "
                     "стойност на договорите за периода — изисква преглед за концентрация на "
                     "възложените поръчки."
@@ -476,13 +477,13 @@ def overspend_vs_plan_flags(
         reasons = []
         if over_plan_flag:
             reasons.append(
-                f"разход {spent:,.0f} EUR при план {plan:,.0f} EUR за годината "
-                f"(с {over_plan:,.0f} EUR над допустимото отклонение)"
+                f"разход {spent:,.0f} € при план {plan:,.0f} € за годината "
+                f"(с {over_plan:,.0f} € над допустимото отклонение)"
             )
         if over_estimate_flag:
             reasons.append(
-                f"общо усвоени {cumulative:,.0f} EUR при пълна прогнозна стойност на обекта "
-                f"{float(estimated_total):,.0f} EUR"
+                f"общо усвоени {cumulative:,.0f} € при пълна прогнозна стойност на обекта "
+                f"{float(estimated_total):,.0f} €"
             )
         message = (
             f"Обект „{name}“: " + "; ".join(reasons) + " — изисква обяснение."
@@ -553,8 +554,8 @@ def plan_jump_flags(
                     "rule": "plan_jump",
                     "severity": "warning",
                     "message": (
-                        f"Планът за обект „{name}“ скача от {prev_plan:,.0f} EUR "
-                        f"({prev['period']}) на {cur_plan:,.0f} EUR ({cur['period']}) — "
+                        f"Планът за обект „{name}“ скача от {prev_plan:,.0f} € "
+                        f"({prev['period']}) на {cur_plan:,.0f} € ({cur['period']}) — "
                         "изисква обяснение за внезапното преразпределение на средства."
                     ),
                     "subject_type": "budget_object",
@@ -586,7 +587,7 @@ def plan_jump_flags(
                     "message": (
                         f"Обект „{name}“ се появява за пръв път в бюджетния отчет за "
                         f"{first_row['period']} (не от началото на годината) с план "
-                        f"{first_plan:,.0f} EUR — изисква обяснение за произхода на средствата."
+                        f"{first_plan:,.0f} € — изисква обяснение за произхода на средствата."
                     ),
                     "subject_type": "budget_object",
                     "subject_id": subject_id,
@@ -645,7 +646,7 @@ def unmatched_spending_flags(
                 "rule": "unmatched_spending",
                 "severity": "info",
                 "message": (
-                    f"За обект „{name}“ с разход {spent:,.0f} EUR не открихме публикуван "
+                    f"За обект „{name}“ с разход {spent:,.0f} € не открихме публикуван "
                     "договор за този обект; може да е възложен под праговете или описан "
                     "различно."
                 ),
@@ -663,3 +664,284 @@ def unmatched_spending_flags(
             }
         )
     return out
+
+
+# ---------------------------------------------------------------------------
+# MissingQuantityRule (`missing_quantity`)
+# ---------------------------------------------------------------------------
+#
+# A citizen reading "we bought new pens for the offices" / "new uniforms for
+# staff" at a 185,000 EUR spend has no way to check the unit price -- 4 pens
+# and a single t-shirt are consistent with that invoice unless an exact
+# number of objects purchased is published somewhere. This rule flags that
+# specific gap for (A) EOP supply contracts and (B) § 52 capital budget
+# objects. See `docs/RULES.md` for the TypeOfContract mapping verification,
+# the regex's test cases, and honest caveats (including real cases found
+# where the quantity exists but isn't in a field this project stores).
+
+#: `raw_json.contract.TypeOfContract` code confirmed (against every sampled
+#: EOP contract in `data/nessebar.db`) to mean "доставки" (supplies/goods):
+#: TOC==1 is services (e.g. застраховка, строителен надзор, repair/maintenance
+#: *services*), TOC==2 is supplies (e.g. доставка на материали/автомobili/
+#: горива), TOC==3 is construction (СМР/реконструкция). See docs/RULES.md.
+_MISSING_QUANTITY_EOP_TYPE_OF_CONTRACT = 2
+
+#: § 52 "Придобиване на дълготрайни активи" -- the only paragraph this rule's
+#: Scope B looks at (subparagraphs 52-01..52-19: computers, buildings,
+#: machinery/equipment, vehicles, inventory, infrastructure, other -- see
+#: `docs/RULES.md` for the subparagraph labels found in the data).
+_MISSING_QUANTITY_BUDGET_PARAGRAPH = "5200"
+
+#: A number immediately followed by a unit of count/volume/area/weight, e.g.
+#: "20 броя", "15 бр.", "2 000 т", "500 кв.м", optionally with a spelled-out
+#: number in parens/slashes in between ("10 /десет/ броя"). Deliberately
+#: covers only units that denote *counted objects* (not money/time-of-day
+#: words like "лева"/"часовник") -- see docs/RULES.md for the positive/
+#: negative test cases this was tuned against.
+_QUANTITY_UNIT_RE = (
+    r"(?:"
+    r"бр\.?|броя|брой"
+    r"|компл(?:ект(?:а|и)?|\.)"
+    r"|к-та"
+    r"|тон(?:а|ове)?|т\.?"
+    r"|кв\.?\s?м\.?"
+    r"|куб\.?\s?м\.?"
+    r"|лин\.?\s?м\.?"
+    r"|м²|м³"
+    r"|кг\.?"
+    r"|литра|л\.?"
+    r"|м\.?"
+    r"|дка"
+    r"|опаковк[аи]"
+    r"|чифт(?:а|ове)?"
+    r"|единиц[аи]"
+    r"|час(?:а|ове)?"
+    r")"
+)
+_QUANTITY_FILLER_RE = r"(?:\s*[(/][^)/\n]{0,20}[)/])?"
+_QUANTITY_NUM_RE = r"(?:\d[\d\s .,]*\d|\d)"
+_QUANTITY_RE = re.compile(
+    rf"{_QUANTITY_NUM_RE}{_QUANTITY_FILLER_RE}\s*{_QUANTITY_UNIT_RE}(?![а-яА-Я])",
+    re.IGNORECASE,
+)
+#: "20 х 30" / "х 20" style dimension/multiplication notation.
+_QUANTITY_NXN_RE = re.compile(r"\d\s*[хx]\s*\d", re.IGNORECASE)
+
+#: Phrases indicating quantities are *deliberately* left open (a framework
+#: agreement / per-call-off ordering against written requests / unit-price
+#: billing) rather than simply omitted -- these are not flagged, only noted.
+_FRAMEWORK_RAMKOVO_RE = re.compile(r"рамков", re.IGNORECASE)
+_FRAMEWORK_EDINICHNI_TSENI_RE = re.compile(r"единични\s*цени", re.IGNORECASE)
+_FRAMEWORK_ZAYAVKA_RE = re.compile(r"заявк", re.IGNORECASE)
+_FRAMEWORK_PERIODICHNO_RE = re.compile(r"периодично\s*възлагане", re.IGNORECASE)
+_FRAMEWORK_PROGNOZEN_RE = re.compile(r"прогнозн", re.IGNORECASE)
+_FRAMEWORK_ORIENTIR_RE = re.compile(r"ориентировъчн|индикативн", re.IGNORECASE)
+_FRAMEWORK_KOLICHESTVO_RE = re.compile(r"количеств", re.IGNORECASE)
+
+_HTML_TAG_RE = re.compile(r"<[^>]+>")
+
+
+def _clean_html(text: str | None) -> str:
+    """Strip HTML tags and unescape entities from an EOP `tender_detail`
+    scalar field (`TenderDescription` carries ``<span>``/``&nbsp;`` markup).
+    """
+    if not text:
+        return ""
+    return html.unescape(_HTML_TAG_RE.sub(" ", text))
+
+
+def _has_quantity(text: str) -> bool:
+    """True if `text` states a number-of-objects quantity anywhere."""
+    return bool(_QUANTITY_RE.search(text) or _QUANTITY_NXN_RE.search(text))
+
+
+def _is_framework_defined(text: str) -> bool:
+    """True if `text` says quantities are intentionally open-ended (framework
+    agreement / per-call-off ordering / unit pricing) rather than omitted.
+    """
+    if _FRAMEWORK_RAMKOVO_RE.search(text) or _FRAMEWORK_EDINICHNI_TSENI_RE.search(text):
+        return True
+    if _FRAMEWORK_ZAYAVKA_RE.search(text) or _FRAMEWORK_PERIODICHNO_RE.search(text):
+        return True
+    return bool(_FRAMEWORK_KOLICHESTVO_RE.search(text)) and bool(
+        _FRAMEWORK_PROGNOZEN_RE.search(text) or _FRAMEWORK_ORIENTIR_RE.search(text)
+    )
+
+
+def _missing_quantity_severity(value: float, thresholds: Thresholds) -> str:
+    if value >= thresholds.missing_quantity_high_eur:
+        return "high"
+    if value >= thresholds.missing_quantity_warning_eur:
+        return "warning"
+    return "info"
+
+
+def _missing_quantity_contract_flags(
+    contracts: list[dict[str, Any]], thresholds: Thresholds
+) -> list[dict[str, Any]]:
+    """MissingQuantityRule, Scope A: a signed EOP supply contract
+    (`TypeOfContract == 2`, see `_MISSING_QUANTITY_EOP_TYPE_OF_CONTRACT`) at
+    or above `missing_quantity_min_value_eur` is flagged if no quantity
+    appears in, in order, `title` (already a `ContractSubject`-or-
+    `TenderName` fallback chain -- see `scrapers/eop.py`'s
+    `_normalize_contract`), `tender_detail.TenderDescription` (a short,
+    sometimes mid-sentence-truncated scalar straight from the API -- see
+    docs/RULES.md's honest caveat about ids 644-646), or
+    `tender_detail.notice_text` (the richer text parsed from the full
+    published-notice HTML by `scrapers/eop.py`'s `extract_notice`/
+    `_build_notices` -- short description + per-lot descriptions, deduplicated)
+    -- unless that same text (all three fields combined) says quantities are
+    intentionally left open (see `_is_framework_defined`), in which case it is
+    silently skipped, not flagged. `details_json["quantity_found_in"]` records
+    which of the three fields (or `"none"`) the quantity was actually found
+    in, for transparency about how much of this is still "our own scrape
+    didn't look far enough" (see docs/RULES.md).
+
+    Only `source == "eop"` records carry this raw_json shape; SIGMA records
+    have no `contract`/`tender_detail` sub-objects (see docs/RULES.md).
+    """
+    min_value = thresholds.missing_quantity_min_value_eur
+    law_ref = thresholds.missing_quantity_law_ref
+    out: list[dict[str, Any]] = []
+
+    for record in contracts:
+        if record.get("source") != "eop":
+            continue
+        raw = record.get("raw_json") or {}
+        contract = raw.get("contract")
+        if not contract:
+            continue
+        if contract.get("TypeOfContract") != _MISSING_QUANTITY_EOP_TYPE_OF_CONTRACT:
+            continue
+        is_contract = bool(record.get("contractor_name") or record.get("contract_date"))
+        if not is_contract:
+            continue
+
+        value = record.get("contract_value_eur")
+        if not value or value < min_value:
+            continue
+
+        tender_detail = raw.get("tender_detail") or {}
+        text_sources = (
+            ("title", record.get("title")),
+            ("tender_description", tender_detail.get("TenderDescription")),
+            ("notice_text", tender_detail.get("notice_text")),
+        )
+        # `quantity_found_in` is "none" for every flag actually emitted below
+        # (a match on any field short-circuits to `continue`, same as before
+        # this per-field search existed) -- it is recorded anyway so
+        # `details_json` documents *that* all three ordered fields were
+        # checked, not just that the combined text had no match.
+        quantity_found_in = "none"
+        for field_name, raw_text in text_sources:
+            if raw_text and _has_quantity(_clean_html(raw_text)):
+                quantity_found_in = field_name
+                break
+        if quantity_found_in != "none":
+            continue
+
+        combined_text = " ".join(_clean_html(raw_text) for _, raw_text in text_sources if raw_text)
+        if _is_framework_defined(combined_text):
+            continue
+
+        source_id = record.get("source_id", "?")
+        subject_id = f"eop:{source_id}"
+        title = _short_title(record.get("title") or contract.get("ContractSubject"))
+        contractor = record.get("contractor_name") or "изпълнителя"
+        out.append(
+            {
+                "rule": "missing_quantity",
+                "severity": _missing_quantity_severity(value, thresholds),
+                "message": (
+                    f"Договорът с {contractor} за „{title}“ на стойност {value:,.0f} € "
+                    "не посочва количество (брой/обем) на закупеното — без него не може "
+                    "да се провери цената за единица. Изисква обяснение."
+                ),
+                "subject_type": "contract",
+                "subject_id": subject_id,
+                "subject_key": subject_id,
+                "details_json": {
+                    "source_id": source_id,
+                    "contract_value_eur": value,
+                    "type_of_contract": _MISSING_QUANTITY_EOP_TYPE_OF_CONTRACT,
+                    "min_value_eur": round(min_value, 2),
+                    "quantity_found_in": quantity_found_in,
+                },
+                "law_ref": law_ref,
+                "procurement_id": record.get("id"),
+            }
+        )
+    return out
+
+
+def _missing_quantity_budget_flags(
+    objects_latest: list[dict[str, Any]], thresholds: Thresholds
+) -> list[dict[str, Any]]:
+    """MissingQuantityRule, Scope B: a § 52 (придобиване на ДМА) capital
+    budget object at the latest reporting period, with `plan_current` or
+    `spent_period` at or above `missing_quantity_min_value_eur`, is flagged
+    if its (short) `object_name` states no quantity.
+
+    Budget-ledger rows only carry a short object name, not a full technical
+    description -- this scope has much lower precision than Scope A, almost
+    every object here lacks an explicit count regardless of whether one
+    exists in the underlying project documentation. See docs/RULES.md.
+    """
+    min_value = thresholds.missing_quantity_min_value_eur
+    law_ref = thresholds.missing_quantity_budget_law_ref
+    out: list[dict[str, Any]] = []
+
+    for obj in objects_latest:
+        if obj.get("paragraph") != _MISSING_QUANTITY_BUDGET_PARAGRAPH:
+            continue
+        plan = float(obj.get("plan_current") or 0)
+        spent = float(obj.get("spent_period") or 0)
+        value = max(plan, spent)
+        if value < min_value:
+            continue
+
+        name = obj.get("object_name") or "обект"
+        if _has_quantity(name) or _is_framework_defined(name):
+            continue
+
+        subject_id = f"{obj.get('paragraph') or '?'}:{name}"
+        basis, basis_value = ("план", plan) if plan >= spent else ("разход", spent)
+        out.append(
+            {
+                "rule": "missing_quantity",
+                "severity": _missing_quantity_severity(value, thresholds),
+                "message": (
+                    f"Бюджетният обект „{name}“ с {basis} {basis_value:,.0f} € не "
+                    "посочва брой/количество на придобиваните активи — без него не "
+                    "може да се провери цената за единица. Изисква обяснение."
+                ),
+                "subject_type": "budget_object",
+                "subject_id": subject_id,
+                "subject_key": subject_id,
+                "details_json": {
+                    "object_name": name,
+                    "paragraph": obj.get("paragraph"),
+                    "period": obj.get("period"),
+                    "plan_current": plan,
+                    "spent_period": spent,
+                    "min_value_eur": round(min_value, 2),
+                },
+                "law_ref": law_ref,
+            }
+        )
+    return out
+
+
+def missing_quantity_flags(
+    contracts: list[dict[str, Any]],
+    objects_latest: list[dict[str, Any]],
+    thresholds: Thresholds,
+) -> list[dict[str, Any]]:
+    """MissingQuantityRule (`missing_quantity`): combines Scope A
+    (`_missing_quantity_contract_flags`, EOP supply contracts) and Scope B
+    (`_missing_quantity_budget_flags`, § 52 capital budget objects). See
+    docs/RULES.md for the full writeup, legal basis, and caveats.
+    """
+    return _missing_quantity_contract_flags(contracts, thresholds) + _missing_quantity_budget_flags(
+        objects_latest, thresholds
+    )

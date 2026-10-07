@@ -77,6 +77,14 @@
 <p class="toolbar__count"><span data-table-count>{{ total | num }}</span> от {{ total | num }}</p>
 {%- endmacro %}
 
+{# Small muted label shown above a table cell's value only in the phone
+   stacked-row layout (hidden on desktop, where the column header already
+   says this). Used to build the "label on top, value below" 2-column grid
+   that `.table--stack` tables fall back to on narrow screens. #}
+{% macro cell_label(text) -%}
+<span class="cell-label">{{ text }}</span>
+{%- endmacro %}
+
 {# Flat single-series column chart. items: list of {label, value}.
    Rendered as an SVG without a viewBox: x/width are percentages (so the
    chart fills any container), y/height are pixels (so text never scales).

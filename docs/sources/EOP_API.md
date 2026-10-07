@@ -68,12 +68,76 @@ page and happens to also pass that same numeric id straight through as `tenderId
 coincide — just make sure whichever id you harvest from a list is the `TenderId` field, not `PublishedTenderId`.
 Response (456KB for a real case): no `EstimatedValue`→ yes `EstimatedValue`/`EstimatedValueMin/Max`,
 `CurrencyType` (int), `OrganizationId`/`OrganizationName`, `SpecialNumber`, `TenderName`, `TenderDescription`
-(long HTML), `ProcedureType` (int code here, differs from the string enum used elsewhere), `TypeOfContract`,
-`PublicationDate`, `ContactPersonDisplayName/Email/Phone`, `TenderDescriptionDocuments` (attachment list w/
-`DocumentId` for downloads), `TenderPublicationDetails[]` (one per official notice, each with an `HtmlPreview`
-field containing the rendered Bulgarian-language notice HTML — **this is the only place CPV *might* appear,
-and in the one case inspected (TenderId 595341) it did not appear at all** — no top-level CPV field exists
-in this payload). Saved: `data/samples/eop_procedure_detail_595341.json`.
+(a short, sometimes truncated-mid-sentence summary — e.g. tenders 331423 (ids 644-646) all stop at exactly
+212 characters, ending "...по обособени позиции:"; this is the raw API field's own shape, not a capture
+artifact of this project), `ProcedureType` (int code here, differs from the string enum used elsewhere),
+`TypeOfContract`, `PublicationDate`, `ContactPersonDisplayName/Email/Phone`, `TenderDescriptionDocuments`
+(attachment list w/ `DocumentId` for downloads), `TenderPublicationDetails[]` (one per official notice --
+решение / обявление за поръчка / обявление за възложена поръчка / ... -- each with an `HtmlPreview` field
+containing the rendered Bulgarian-language notice as a full, self-contained HTML page, ~55-250KB).
+
+**Update (2026-10-07): CPV *is* present in `HtmlPreview`, correcting the original note below that it
+"did not appear at all" in tender 595341.** That original finding was from eyeballing one entity-escaped
+HTML dump and missed it; `scrapers/eop.py`'s `extract_notice()` (added this session) now parses it
+reliably. See "Notice-HTML structure" below for the field layout, and `docs/RULES.md`'s MissingQuantityRule
+section for how this is used. Saved: `data/samples/eop_procedure_detail_595341.json`.
+
+#### Notice-HTML structure (`TenderPublicationDetails[].HtmlPreview`)
+
+Two distinct markup generations were found across the ~410 cached tenders (`PublicationFormType` on the
+publication entry tells them apart):
+
+- **Legacy / ЗОП forms** (`PublicationFormType` 2/3/14/30/32/33/34/35/36/37/39/40/41/42 -- the Bulgarian-only
+  forms, e.g. 2="Обявление за поръчка", 3="Обявление за възложена поръчка", 32="Решение по чл. 22, ал.1 от
+  ЗОП"). Laid out as a sequence of `<tr>` rows: a "header" row has a `<td class="first__coll">` holding the
+  field's roman/arabic code (e.g. "II.1.4)") whose sibling `<td>` holds a `<div class="section__name">` (the
+  field's Bulgarian label, e.g. "Кратко описание", "Основен CPV код", "Описание на обществената поръчка").
+  The row(s) immediately after, up to the next header row, hold the value(s): either one or more sibling
+  `<div class="name">` elements in one `<td>` (a free-text value, sometimes split across several divs --
+  one per paragraph/bullet -- for a long multi-paragraph description; naively reading only the first
+  `div.name` silently truncates it), or a `<div class="label__name">`+`<div class="name">` pair (a named
+  sub-field, e.g. "Стойност, без да се включва ДДС:" / "7330000" then "Валута:" / "BGN"). A multi-lot
+  procedure repeats the whole "II.2) Информация за ОП (N)" block once per обособена позиция (lot) --
+  confirmed up to 7 lots in one notice (tender 266101).
+- **eForms / EU-standard forms** (`PublicationFormType` 54/60/65/72/74/76/78 -- the newer BT-coded forms,
+  e.g. 54="Обявление за поръчка – Общата директива, стандартен режим", 65="Обявление за възложена поръчка –
+  Общата директива, стандартен режим"). Reuses the *same* row/div markup, but every field is a labeled
+  sub-field with its BT code folded into the label text itself, e.g. `<div class="label__name">Описание
+  (BT-24-Procedure)</div>`. There is **no literal "CPV" text anywhere** in this generation; the CPV field is
+  instead "Основна класификация(BT-262-...)" / "Допълнителна класификация(BT-263-...)", whose value is
+  `"<8-digit code> - <description>"` (e.g. "34350000 - Външни гуми с лек и тежък режим на експлоатация").
+  Multi-lot procedures repeat the procedure-level fields once more per lot, suffixed `-Lot` instead of
+  `-Procedure` (e.g. "Описание(BT-24-Lot)").
+
+Both generations share: the notice's own heading/title (e.g. "Обявление за възложена поръчка") is a single
+`<p class="header__form">` near the top of the page. Key fields and their (generation-specific) labels:
+
+| Field | Legacy label (code) | eForms label |
+|---|---|---|
+| Notice type | `p.header__form` text | same |
+| Main CPV | "Основен CPV код" (II.1.2 / IV.2) | "Основна класификация(BT-262-Procedure)" |
+| Additional CPV | "Допълнителни CPV кодове" (II.2.2, per lot) | "Основна класификация(BT-262-Lot)" / "Допълнителна класификация(BT-263-...)" |
+| Short description | "Кратко описание" (II.1.4) | "Описание(BT-24-Procedure)" |
+| Per-lot description | "Описание на обществената поръчка" (II.2.4, repeats per lot) | "Описание(BT-24-Lot)" (repeats per lot) |
+| Estimated value | "Прогнозна обща стойност" (II.1.5) / "Прогнозна стойност" (II.2.6, per lot) -- split into a "Стойност.../Валута" sub-pair | "Прогнозна стойност, без да се включва ДДС(BT-27-Procedure/-Lot)" -- one combined value |
+| Awarded contractor (award notices only) | "Наименование и адрес на изпълнителя" (V.2.3), incl. EIK | (not parsed by this project -- `GetContractsByOrganization`/`GetPublishedContractListItems` already give the contractor+EIK directly) |
+| Awarded value (award notices only) | "Информация относно стойността на поръчката/обособената позиция" (V.2.4) | (same -- not parsed; redundant with `ContractValue`) |
+
+`scrapers/eop.py`'s `extract_notice(html)` parses both generations label-by-label (not CSS position) into
+`{notice_type, cpv_main, cpv_codes, short_description, lot_descriptions, estimated_value, full_text}`; see
+its module-level docstring for the full extraction algorithm. `_build_notices()`/`_tender_detail_with_notices()`
+turn a tender's full `TenderPublicationDetails[]` into the `notices`/`notice_text` fields stored in
+`raw_json.tender_detail` (full_text itself is never persisted — see docs/RULES.md).
+
+**Honest caveat found while building this:** not every notice states a quantity even once the full text is
+read -- e.g. tenders 331423 (ids 644-646, fuel bought via commodity exchange) and 526402 (id 450, tires)
+both genuinely lack an explicit purchased quantity anywhere in their notice text (the former only ever
+repeats the lot's fuel-type name; the latter's own text says the quantities are "в Таблица, неразделна част
+към техническата спецификация" -- in an attached technical-specification table this project doesn't
+download). See `docs/RULES.md`'s MissingQuantityRule section for the full writeup, including a newly
+observed precision cost: the fuller text also surfaces technical *specifications* (seat counts, tank/body
+volumes, throughput rates, equipment dimensions) that the rule's number+unit pattern can't distinguish from
+a genuine purchased-quantity statement.
 
 ### 5. `GetPublishedContractListItems` — the procedure's "Договори" (contracts) tab
 Request: `{"tenderId":<TenderId>,"ianaTimeZone":"Europe/Kiev"}`. Response: `{"ContractListItems":[...],"Lots":[]}`.
@@ -86,8 +150,10 @@ amendments (empty in the sample). Saved: `data/samples/eop_contract_detail_59534
 ### 6. `GetPublishedTenderExportsByTenderId` — full-dossier ZIP export
 Request: `{"tenderId":<TenderId>,"ianaTimeZone":"Europe/Kiev"}`. Response lists downloadable export packages,
 e.g. `{"Id":494459,"Name":"T595341-Експорт-20260713.zip","DocumentId":57856870,"IsFullExport":true,...}`.
-**Not downloaded this session** (time budget) but is the most likely place to find a machine-readable CPV
-code and the original AOP/TED notice XML, since none of the JSON endpoints above expose CPV directly.
+**Not downloaded this session** (time budget). CPV no longer needs this -- it's reliably readable straight
+out of `TenderPublicationDetails[].HtmlPreview` (see method 4's "Notice-HTML structure" above) -- but this
+ZIP remains the only known place to find quantities that a notice itself defers to an attached technical
+specification (confirmed for EOP id 450, see docs/RULES.md), since this project doesn't parse ZIP contents.
 
 ### 7. `GetPublishedTendersBySpecified` — the public "Регистър на обществените поръчки" listing (today/open tenders), not org-filtered
 Request shape (from the landing page's default "отворени за участие" filter): `{"searchParameters":{"StartIndex":1,"EndIndex":10,"PropertyFilters":[],"SearchText":"","SearchProperty":{"PropertyDisplayName":"str_Today_opened","PropertyName":"Status","PropertyValue":"1"},"OrderAscending":false,"OrderColumn":"PublicationDate","Keywords":[]}}`.
@@ -112,7 +178,7 @@ above instead (reached via the Справки → Възложители search 
 | `SupplierName` / `ContractSuppliers[].OrganizationName` | Contractor's registered name |
 | `SpecialNumber` / `TenderNumber` | AOP-style case number, e.g. `00126-2026-0057` (`00126` = Несебър's permanent AOP buyer code) |
 | `ContractDate` / `PublicationDate` / `StatusChangedDate` | .NET epoch-ms dates |
-| CPV | **Not found in any JSON field inspected.** Only likely source: the ZIP export (method 6) or the notice `HtmlPreview` text (not present in the one case checked). |
+| CPV | **Not present as a top-level JSON field anywhere.** Reliably readable from `TenderPublicationDetails[].HtmlPreview` (method 4's "Notice-HTML structure") via `scrapers/eop.py`'s `extract_notice()` -- corrects this doc's original claim (below the 2026-10-07 note in method 4) that it "did not appear at all" in the one notice first inspected by eye. |
 
 ## Human-readable page
 `https://app.eop.bg/today/<TenderId>` — e.g. https://app.eop.bg/today/605199 (open procedure) and
@@ -123,4 +189,6 @@ https://app.eop.bg/today/595341 (awarded, with a signed contract) both render co
   `GetPublishedTenderDetails` (a different code space than the string `ProcedureType` in method 3) — would
   need a `RetrieveXxxTypes`-style lookup call, not located this session.
   the `GetContractingAuthoritySearchResult`'s `Status` field values beyond `"2"` are guesses, not tested.
-- Did not download a `GetPublishedTenderExportsByTenderId` ZIP to verify CPV presence inside it.
+- Did not download a `GetPublishedTenderExportsByTenderId` ZIP -- no longer needed to verify CPV presence
+  (resolved, see method 4), but still open as the only known way to reach a quantity a notice defers to an
+  attached technical specification (e.g. EOP id 450).
