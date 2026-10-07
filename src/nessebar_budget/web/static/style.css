@@ -891,6 +891,52 @@ a.issue:hover .issue__chev { color: var(--text); }
 .monitor-block li + li { margin-top: 6px; }
 .monitor-block li::marker { color: var(--text-3); }
 
+/* ------------------------------------------------------------------ methodology: "Цитати от закона" */
+.law-details {
+  margin-top: var(--s-4);
+  padding: var(--s-4) var(--s-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-1);
+}
+.law-details + .law-details { margin-top: var(--s-3); }
+.law-details summary {
+  cursor: pointer;
+  list-style: none;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+.law-details summary::-webkit-details-marker { display: none; }
+.law-details summary::marker { display: none; }
+.law-details summary:hover { color: var(--accent-text); }
+.law-details[open] summary { margin-bottom: var(--s-3); }
+.law-quote { margin-top: var(--s-4); }
+.law-quote:first-of-type { margin-top: 0; }
+.law-quote__head {
+  margin-bottom: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text-2);
+  text-transform: uppercase;
+}
+.law-quote blockquote {
+  margin: 0;
+  padding: var(--s-3) var(--s-4);
+  border-left: 2px solid var(--accent);
+  background: var(--bg);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  font-size: 13.5px;
+  line-height: 1.65;
+  color: var(--text-body);
+}
+.law-quote__note {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--text-3);
+}
+
 /* ------------------------------------------------------------------ inner pages */
 .page-head {
   padding: var(--s-7) 0 var(--s-6);

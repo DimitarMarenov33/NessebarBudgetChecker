@@ -117,3 +117,21 @@ UA `Mozilla/5.0 (compatible; NessebarTransparencyProject/1.0; civic research; po
 | https://os-nessebar.eu/resheniya (pages 3-11) | not attempted | — | Time budget; would be needed to pinpoint exact 2024/2025/2026 budget-adoption protocol numbers by exhaustive paging since no search exists |
 | https://nesebar.imeon.bg/frmAOS.aspx | not fetched | — | Linked from register.html as "Регистър на актове за общинска собственост" / "Регистър на разпоредителните сделки с имоти" — property-transactions register, out of scope for purchases but noted for completeness |
 | registri/второстепенни разпоредители с бюджет.PDF | not fetched | — | Listed on register.html as list of second-level budget spending units; title suggests a name list only, not opened this session |
+
+## Budget ordinance search 2026-10-07
+
+Looking for the ЗПФ чл.82(1) municipal budget ordinance (public-information duty / чл.137(6), public hearing on annual report / чл.140(4), capital-programme publication). `.venv/bin/python` + httpx, UA `Mozilla/5.0 (compatible; NessebarTransparencyProject/1.0; civic research; polite crawler)` for nesebar.bg; WebSearch/WebFetch for discovery and os-nessebar.eu.
+
+| URL | Method | HTTP | Notes |
+|---|---|---|---|
+| WebSearch "Наредба за условията и реда за съставяне приемане изпълнение и отчитане на бюджета Община Несебър" | — | — | Surfaced `https://nesebar.bg/files/Naredba%2012.pdf` as the top hit |
+| https://nesebar.bg/files/Naredba%2012.pdf | GET (httpx) | 200 | 180,298 bytes, valid PDF, 19 pages. **Downloaded** as `data/samples/nesebar_naredba_budget.pdf`; text extracted cleanly with pdfplumber (25,929 chars, has a text layer — no OCR needed) |
+| https://nesebar.bg/files/Naredba%2012.pdf | HEAD (httpx) | 200 | `Last-Modified: Mon, 14 Oct 2013 18:35:40 GMT` — file untouched since 2013 despite citing the pre-2013 ЗОБ (repealed by ЗПФ), not ЗПФ itself |
+| https://os-nessebar.eu/naredbi | GET (WebFetch) | 200 | Page 1 of 4 (items 1-10 of 37): Наредби №11, №9, №3, №1, №6, №16, №18 + 2 municipal-enterprise rules. No budget ordinance listed |
+| https://os-nessebar.eu/naredbi?page=2 | GET (WebFetch) | 200 | Items 11-20 of 37; no Наредба №12 |
+| https://os-nessebar.eu/naredbi?page=3 | GET (WebFetch) | 200 | Items ~21-30 of 37 (roads, housing, culture fund, kindergarten registry, etc.); no Наредба №12 |
+| https://os-nessebar.eu/naredbi?page=4 | GET (WebFetch) | 429 | Too Many Requests — not retried this session (politeness budget); items 31-37 unchecked |
+| WebSearch "Наредба Несебър бюджетната прогноза три години ЗПФ чл.82" | — | — | No Nessebar-specific forecast ordinance surfaced directly; mostly other municipalities' equivalents |
+| https://os-nessebar.eu/resheniya/resheniya-ot-protokol-629032024-g | GET (WebFetch) | 200 | Решение №105 (Протокол №6, 29.03.2024) approves the 2025-2027 three-year budget forecast citing "чл.83 ал.2 от Закона за публичните финанси и Наредбата за условията и реда за съставяне на бюджетната прогноза..." — implies a possibly separate, ЗПФ-based forecast ordinance; number/full text not located this session (open item) |
+
+Deliverable written to `docs/sources/NAREDBA_BUDGET.md`.

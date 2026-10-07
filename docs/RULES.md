@@ -75,13 +75,13 @@ and 2026-02..2026-08, budget reports 2019-01..2022-03 and 2026-01..2026-08.
 | `overspend_vs_plan` | signal | warning | ЗПФ чл. 124, ал. 2; чл. 125 | 1 |
 | `plan_jump` | signal | warning | ЗПФ чл. 124, ал. 2; ЗМСМА чл. 22, ал. 2 | 14 |
 | `unmatched_spending` | signal | info | ЗОП чл. 20, ал. 4, т. 3 | 13 |
-| `missing_annual_report` | signal | warning | ЗПФ чл. 133, ал. 4; чл. 140, ал. 5-6; чл. 173 | 4 |
+| `missing_annual_report` | signal | warning | ЗПФ чл. 11, ал. 3; чл. 133, ал. 4; чл. 140, ал. 5-6; чл. 173 | 4 |
 | `eu_funded_irregularity` | signal (meta) | info | НК чл. 248а (not in docs/law); OLAF | 10 |
 | `price_unverifiable` | opacity | info; warning >= 100k | ЗОП чл. 48, ал. 1, т. 1; чл. 36, ал. 1, т. 12 | 2 |
 | `missing_quantity` | opacity | info/warning/high by value | ЗОП чл. 2, ал. 2; Прил. № 4, ч. В, т. 6 | 75 |
 | `missing_value` | opacity | warning | ЗОП чл. 36, ал. 1, т. 12 | 0 |
 | `near_threshold` | opacity (signal with splitting) | info (warning) | ЗОП чл. 20, ал. 2-3; чл. 21, ал. 14 | 4 |
-| `missing_monthly_report` | opacity | info | ЗПФ чл. 133, ал. 1 и 4; ЗДОИ чл. 15а, ал. 4 | 41 |
+| `missing_monthly_report` | opacity | info | ЗПФ чл. 11, ал. 3; чл. 133, ал. 1 и 4; ЗДОИ чл. 15а, ал. 4 | 41 |
 
 Totals: 301 open -- 24 violation, 155 signal, 122 opacity. No
 contract-level rule fires on more than ~9% of the 411 signed contracts
@@ -436,10 +436,17 @@ basis: ЗПФ чл. 133, ал. 1 and 4 (*"Първостепенните раз�
 отчети"*, *"се публикуват на интернет страниците"* -- the mayor is the
 municipality's първостепенен разпоредител, чл. 11, ал. 3); чл. 140, ал. 5-6
 (annual report adopted by 30 September, *"Приетият отчет … се публикуват на
-интернет страницата на общината"*); fine чл. 173. December of such a year
-gets this flag only, not also a monthly one. Subject `annual:YYYY`.
-Current: 2022, 2023, 2024, 2025 -- the same gap as the monthly reports
-below (the scraper's archive coverage, a background download is under way).
+интернет страницата на общината"*); fine чл. 173. The municipality's own
+Наредба № 12 за общинския бюджет (2004, still citing the repealed Закон за
+общинските бюджети, never amended to ЗПФ) sets a lighter *local* duty --
+чл. 37, ал. 1 only requires the mayor to inform the community *"не по-малко
+от два пъти годишно"*, in person (срещи, пресконференции, кръгли маси); it
+says nothing about the website. The website-publication duty this rule
+actually checks comes from ЗПФ/ЗДОИ, not from the local ordinance. December
+of such a year gets this flag only, not also a monthly one. Subject
+`annual:YYYY`. Current: 2022, 2023, 2024, 2025 -- the same gap as the
+monthly reports below (the scraper's archive coverage, a background
+download is under way).
 
 ### `eu_funded_irregularity` (meta rule -- runs last)
 
@@ -717,10 +724,15 @@ Every month from 2019-01 to the month before last (relative to the run
 date) with no B1/B3 cash-execution report in `budget_reports` -> opacity /
 info, subject `report:YYYY-MM`. Wording is *"Не открихме публикуван месечен
 отчет…"*: the gap may be the scraper's, not the municipality's. Legal basis:
-ЗПФ чл. 133, ал. 1 and 4; ЗДОИ чл. 15, ал. 1, т. 7 (*"информация за бюджета
-и финансовите отчети на администрацията"*) and чл. 15а, ал. 4 (*"се
-публикува … в срок до три работни дни от … създаването на съответната
-информация"*); fine ЗПФ чл. 173. When `budget_reports` is empty the report
+ЗПФ чл. 11, ал. 3 (the mayor is the municipality's първостепенен
+разпоредител с бюджет); чл. 133, ал. 1 and 4; ЗДОИ чл. 15, ал. 1, т. 7
+(*"информация за бюджета и финансовите отчети на администрацията"*) and
+чл. 15а, ал. 4 (*"се публикува … в срок до три работни дни от …
+създаването на съответната информация"*); fine ЗПФ чл. 173. The
+municipality's own Наредба № 12 за общинския бюджет (2004, not updated to
+ЗПФ) only commits the mayor to informing the community in person at least
+twice a year (чл. 37, ал. 1) -- the website-publication duty comes from
+ЗПФ/ЗДОИ, not the ordinance. When `budget_reports` is empty the report
 rules do not run at all ("not scraped yet" is not "not published").
 Current: 41 (2022-04 .. 2025-12, minus the four Decembers that carry
 `missing_annual_report`).
