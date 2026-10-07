@@ -13,7 +13,7 @@ import datetime as dt
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
-from nessebar_budget.analysis import matching, rules
+from nessebar_budget.analysis import matching, provenance, rules
 from nessebar_budget.analysis.engine import run_full_analysis
 from nessebar_budget.analysis.matching import MatchCandidate, find_best_match
 from nessebar_budget.analysis.thresholds import Thresholds
@@ -1269,4 +1269,228 @@ def test_migrate_flags_table_adds_contract_columns_idempotently(tmp_path) -> Non
     migrate_flags_table(engine)  # second run is a no-op
     with engine.connect() as conn:
         columns = {row[1] for row in conn.execute(text("PRAGMA table_info(flags)"))}
-    assert {"tier", "explanation", "documents_json", "subject_key", "law_ref"} <= columns
+    assert {
+        "tier", "explanation", "documents_json", "subject_key", "law_ref", "sources_json"
+    } <= columns
+
+
+# ---------------------------------------------------------------------------
+# analysis.provenance: the "Източници" of every flag
+# ---------------------------------------------------------------------------
+
+_DEC_2022_REPORT = {
+    "id": 472,
+    "period": "2022-12",
+    "kind": "capital_xlsx",
+    "url": "https://www.nesebar.bg/03-2019/otchet2022dec5206.xlsx",
+    "file_path": "data/cache/nesebar_site/2022/12/otchet2022dec5206.xlsx",
+}
+
+
+def _karavelov_row(**extra) -> dict:
+    """The real Dec 2022 line item (BGN file: plan 102 376 лв., spent 627 983 лв.)."""
+    return {
+        "period": "2022-12",
+        "unit": "Общо",
+        "paragraph": "5100",
+        "object_name": 'Реконструкция на СУ "Л.Каравелов" - филиал в Несебър-стар град',
+        "estimated_total": 52663.06,
+        "spent_prior": 0.0,
+        "plan_current": 52344.02,
+        "spent_period": 321082.61,
+        "extra_json": {
+            "row_type": "object",
+            "original_currency": "BGN",
+            "conversion_rate": 1.95583,
+            **extra,
+        },
+    }
+
+
+def test_budget_row_source_with_sheet_and_row() -> None:
+    src = provenance.budget_row_source(
+        _karavelov_row(source_sheet="Общо", source_row=19), _DEC_2022_REPORT
+    )
+    assert src["kind"] == "budget_file"
+    assert src["url"] == _DEC_2022_REPORT["url"]
+    assert src["file"] == "otchet2022dec5206.xlsx"
+    assert (src["sheet"], src["row"], src["period"]) == ("Общо", 19, "2022-12")
+    assert "декември 2022" in src["label"]
+    fields = {f["name"]: f for f in src["fields"]}
+    # Leva figures computed back from EUR (x 1.95583) land on the published whole leva.
+    assert fields["Уточнен план"]["value"] == 102376
+    assert fields["Уточнен план"]["value_eur"] == 52344.02
+    assert fields["Усвоено към отчетния период"]["value"] == 627983
+    assert fields["Сметна стойност"]["value"] == 103000
+    assert {f["currency"] for f in src["fields"]} == {"BGN"}
+    assert "Номерът на реда" not in (src["note"] or "")
+
+
+def test_budget_row_source_without_source_row_falls_back_to_unit_sheet() -> None:
+    src = provenance.budget_row_source(_karavelov_row(), _DEC_2022_REPORT, fields=("plan_current",))
+    assert src["sheet"] == "Общо"  # the worksheet title, stored as `unit`
+    assert src["row"] is None
+    assert [f["name"] for f in src["fields"]] == ["Уточнен план"]
+    assert "Номерът на реда не е записан" in src["note"]
+    # No report known (e.g. an orphan line item) and an EUR-native 2026 row.
+    eur_row = {**_karavelov_row(), "period": "2026-03", "extra_json": {"row_type": "object"}}
+    src = provenance.budget_row_source(eur_row, None)
+    assert src["url"] is None and src["file"] is None
+    plan = next(f for f in src["fields"] if f["name"] == "Уточнен план")
+    assert plan["value"] == plan["value_eur"] == 52344.02
+    assert plan["currency"] == "EUR"
+
+
+def test_eur_to_bgn_keeps_cents_when_not_a_whole_lev() -> None:
+    assert provenance.eur_to_bgn(321082.61) == 627983
+    assert provenance.eur_to_bgn(100.0) == 195.58
+    assert provenance.eur_to_bgn(None) is None
+
+
+def test_contract_sources_eop_without_sigma() -> None:
+    record = _eop("5", value=184065.08, original=360000, currency=3, estimate=360000,
+                  tender="00126-2023-0042")
+    record["url"] = "https://app.eop.bg/today/299573"
+    record["raw_json"]["contract"].update(
+        {"ContractNumber": "5", "SupplierName": "Доставчик ЕООД", "RegisterNumberList": "111"}
+    )
+    record["raw_json"]["procedure"]["Currency"] = 3
+    sources = provenance.contract_sources(record)
+    assert [s["kind"] for s in sources] == ["eop_contract", "eop_tender"]
+    contract, tender = sources
+    assert contract["url"] == "https://app.eop.bg/today/299573"
+    assert "00126-2023-0042" in contract["label"]
+    assert "GetContractsByOrganization" in contract["note"]
+    fields = {f["name"]: f for f in contract["fields"]}
+    assert fields["ContractValue"]["value"] == 360000
+    assert fields["ContractValue"]["currency"] == "BGN"
+    assert fields["ContractValue"]["value_eur"] == 184065.08
+    assert fields["ContractDate"]["value"] == "2025-03-01"
+    assert fields["SupplierName"]["value"] == "Доставчик ЕООД"
+    estimate = next(f for f in tender["fields"] if f["name"] == "EstimatedValue")
+    assert estimate["value"] == 360000 and estimate["value_eur"] == 184065.08
+    assert "GetProcurementsByOrganization" in tender["note"]
+
+
+def test_contract_sources_with_sigma_bids() -> None:
+    thresholds = Thresholds()
+    eop = _eop("2", value=600_000, estimate=600_000, procedure="OpenProcedure", tender="U2", eik="2")
+    twin = _sigma("s2", unp="U2", eik="2", value=600_000, bids=1)
+    sources = provenance.contract_sources(eop, sigma=twin)
+    sigma = sources[-1]
+    assert sigma["kind"] == "sigma"
+    assert sigma["url"] == "https://sigma.midt.bg/contracts.csv?authority=000057122"
+    assert "s2" in sigma["note"]
+    assert {f["name"]: f["value"] for f in sigma["fields"]} == {"id": "s2", "unp": "U2", "bids_received": 1}
+    # The rule cites the SIGMA twin because SIGMA supplied the bid count.
+    flag = rules.bid_at_ceiling_flags([eop, twin], thresholds)[0]
+    assert [s["kind"] for s in flag["sources"]] == ["eop_contract", "eop_tender", "sigma"]
+    # A SIGMA-only record is its own (single) source.
+    only = provenance.contract_sources(twin, sigma_fields=("id", "bids_received"))
+    assert [s["kind"] for s in only] == ["sigma"]
+
+
+def test_every_rule_attaches_sources() -> None:
+    thresholds = Thresholds()
+    reports = [("2025-12", "B1")]
+    flags = rules.missing_report_flags(
+        reports, thresholds, now=_dt(2026, 3, 10), files_by_period={"2026-01": ["kr.xlsx"]}
+    )
+    january = next(f for f in flags if f["subject_id"] == "report:2026-01")
+    (page,) = january["sources"]
+    assert page["kind"] == "reports_page"
+    assert page["url"] == "https://www.nesebar.bg/reports.html"
+    assert "kr.xlsx" in page["note"]
+    jumps = rules.plan_jump_flags(
+        {("5200", "Обект"): [
+            {"period": "2026-02", "plan_current": 100_000, "object_name": "Обект"},
+            {"period": "2026-03", "plan_current": 300_000, "object_name": "Обект"},
+        ]},
+        thresholds,
+        dataset_first_period="2026-01",
+    )
+    jump = next(f for f in jumps if "->" in f["subject_id"])
+    assert [s["period"] for s in jump["sources"]] == ["2026-02", "2026-03"]
+
+
+def test_run_full_analysis_persists_sources_json() -> None:
+    session = _memory_session()
+    report = BudgetReport(**{k: v for k, v in _DEC_2022_REPORT.items() if k != "id"})
+    session.add(report)
+    session.flush()
+    row = _karavelov_row(source_sheet="Общо", source_row=19)
+    session.add(BudgetLineItem(report_id=report.id, currency="EUR", **row))
+    session.add(
+        Procurement(
+            source="eop",
+            source_id="77",
+            title="Доставка",
+            procedure_type="NegotiatedProcedure",
+            contractor_name="X EOOD",
+            contractor_eik="111",
+            contract_value_eur=600_000,
+            contract_date=_dt(2025, 1, 1),
+            url="https://app.eop.bg/today/595341",
+            raw_json={
+                "contract": {"ContractNumber": "77", "TenderNumber": "U77", "TypeOfContract": 1},
+                "procedure": {"IsEUFinanced": True, "SpecialNumber": "U77"},
+                "tender_detail": {},
+            },
+        )
+    )
+    session.commit()
+
+    run_full_analysis(session, now=_dt(2026, 3, 10))
+    session.commit()
+    flags = session.scalars(select(Flag)).all()
+    assert flags and all(f.sources_json for f in flags)
+
+    unplanned = next(f for f in flags if f.rule == "unplanned_spending")
+    (src,) = unplanned.sources_json
+    assert src["url"] == _DEC_2022_REPORT["url"]
+    assert (src["sheet"], src["row"]) == ("Общо", 19)
+    values = {f["name"]: f["value"] for f in src["fields"]}
+    assert values["Уточнен план"] == 102376 and values["Усвоено към отчетния период"] == 627983
+
+    exceptional = next(f for f in flags if f.rule == "exceptional_procedure")
+    assert exceptional.sources_json[0]["url"] == "https://app.eop.bg/today/595341"
+    # The meta rule cites the flag it is built on, by permalink.
+    meta = next(f for f in flags if f.rule == "eu_funded_irregularity")
+    linked = [s for s in meta.sources_json if s["kind"] == "flag"]
+    assert linked and linked[0]["url"] == f"flags/{exceptional.id}.html"
+    assert any(
+        f["name"] == "IsEUFinanced" for s in meta.sources_json for f in s.get("fields", [])
+    )
+    session.close()
+
+
+def test_plan_jump_never_compares_across_years_or_flags_a_year_s_first_file() -> None:
+    """Each year's capital ledger is a new annual budget: Dec 2022 -> Mar 2023
+    is not a mid-year jump, and an object first seen in the first available
+    file of a year (here 2023-03: Jan/Feb 2023 not published) is part of
+    that year's initial plan. Within one year both cases still flag."""
+    thresholds = Thresholds()
+
+    def row(period: str, plan: float, name: str) -> dict:
+        return {"period": period, "plan_current": plan, "object_name": name, "paragraph": "5100"}
+
+    history = {
+        # 100k in Dec 2022, 600k in the 2023 budget: new year, not a jump.
+        ("5100", "Пренесен обект"): [row("2022-12", 100_000, "Пренесен обект"),
+                                     row("2023-03", 600_000, "Пренесен обект")],
+        # First seen in 2023's first available file with a big plan: not mid-year.
+        ("5100", "Обект от началото на 2023"): [row("2023-03", 900_000, "Обект от началото на 2023")],
+        # Same-year jump and a genuine mid-year newcomer: still flagged.
+        ("5100", "Скок"): [row("2023-03", 100_000, "Скок"), row("2023-04", 600_000, "Скок")],
+        ("5100", "Нов през годината"): [row("2023-05", 900_000, "Нов през годината")],
+        ("5100", "Друг"): [row("2022-11", 1_000, "Друг"), row("2022-12", 1_000, "Друг"),
+                           row("2023-04", 1_000, "Друг")],
+    }
+    flags = rules.plan_jump_flags(history, thresholds, dataset_first_period="2022-11")
+    keys = {f["subject_key"] for f in flags}
+    assert keys == {
+        "5100:Скок:2023-03->2023-04",
+        "5100:Нов през годината:new",
+    }
+    new = next(f for f in flags if f["subject_key"].endswith(":new"))
+    assert new["details_json"]["year_first_period"] == "2023-03"

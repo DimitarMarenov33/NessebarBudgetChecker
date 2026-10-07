@@ -13,6 +13,7 @@ import re
 from collections import defaultdict
 from typing import Any, Protocol
 
+from nessebar_budget.analysis.provenance import contract_sources
 from nessebar_budget.analysis.rules._common import (
     EXCEPTIONAL_PROCEDURES,
     OFFER_PERIOD_PROCEDURES,
@@ -41,6 +42,39 @@ from nessebar_budget.analysis.rules.linking import (
     tender_number,
 )
 from nessebar_budget.analysis.thresholds import Thresholds
+
+#: Provenance field sets (raw_json.contract / procedure / tender_detail keys,
+#: SIGMA CSV columns) each rule's numbers come from -- see
+#: `analysis.provenance.contract_sources`.
+_VALUE_FIELDS = (
+    "ContractNumber", "TenderNumber", "ContractDate", "ContractValue", "Currency",
+    "CurrentContractValue", "SupplierName",
+)
+_PUBLICATION_FIELDS = (
+    "ContractNumber", "TenderNumber", "ContractDate", "TedPublishDate", "SupplierName",
+    "RegisterNumberList",
+)
+_ANNEX_FIELDS = (
+    "ContractNumber", "TenderNumber", "ContractValue", "Currency", "CurrentContractValue",
+    "CurrentContractCurrency", "SupplierName",
+)
+_CONCENTRATION_FIELDS = (
+    "ContractNumber", "ContractDate", "ContractValue", "Currency", "SupplierName",
+    "RegisterNumberList",
+)
+_PROCEDURE_FIELDS = (
+    "ContractNumber", "TenderNumber", "ContractDate", "ContractValue", "Currency",
+    "ProcedureType", "SupplierName",
+)
+_DEADLINE_CONTRACT_FIELDS = ("ContractNumber", "TenderNumber", "ContractDate", "SupplierName")
+_DEADLINE_TENDER_FIELDS = (
+    "ProcedureType", "PublicationDate", "OfferPhaseStartDate", "OfferPhaseEndDate",
+)
+_CEILING_CONTRACT_FIELDS = (
+    "ContractNumber", "TenderNumber", "ContractValue", "Currency", "SupplierName",
+)
+_CEILING_TENDER_FIELDS = ("SpecialNumber", "EstimatedValue", "Currency")
+_SIGMA_CONTRACT_FIELDS = ("id", "unp", "subject", "contractor", "value_eur")
 
 # ---------------------------------------------------------------------------
 # Legacy per-record rule shape (kept for `engine.run_rules` / pipeline.py)
@@ -145,6 +179,12 @@ def missing_value_flags(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
                         "приложенията към тях)"
                     ),
                     procurement_id=hit.get("procurement_id"),
+                    sources=contract_sources(
+                        record,
+                        contract_fields=_VALUE_FIELDS,
+                        tender_fields=None,
+                        sigma_fields=_SIGMA_CONTRACT_FIELDS,
+                    ),
                 )
             )
     return out
@@ -231,6 +271,9 @@ def late_publication_flags(
                 },
                 law_ref=thresholds.late_publication_law_ref,
                 procurement_id=record.get("id"),
+                sources=contract_sources(
+                    record, contract_fields=_PUBLICATION_FIELDS, tender_fields=None
+                ),
             )
         )
     return out
@@ -334,6 +377,7 @@ def annex_growth_flags(
                 },
                 law_ref=thresholds.annex_growth_law_ref,
                 procurement_id=record.get("id"),
+                sources=contract_sources(record, contract_fields=_ANNEX_FIELDS, tender_fields=None),
             )
         )
     return out
@@ -392,6 +436,7 @@ def annex_over_cap_flags(
                 },
                 law_ref=thresholds.annex_over_cap_law_ref,
                 procurement_id=record.get("id"),
+                sources=contract_sources(record, contract_fields=_ANNEX_FIELDS, tender_fields=None),
             )
         )
     return out
@@ -460,6 +505,11 @@ def single_bidder_flags(
                     "чл. 2, ал. 2 ЗОП (забрана за необосновано ограничаване на конкуренцията)"
                 ),
                 procurement_id=record.get("id"),
+                sources=contract_sources(
+                    record,
+                    contract_fields=_VALUE_FIELDS,
+                    sigma_fields=_SIGMA_CONTRACT_FIELDS + ("bids_received",),
+                ),
             )
         )
     return out
@@ -541,6 +591,16 @@ def contractor_concentration_flags(
                     "window_days": thresholds.concentration_window_days,
                 },
                 law_ref="чл. 2, ал. 1, т. 1 и 2 ЗОП (равнопоставеност и свободна конкуренция)",
+                sources=[
+                    src
+                    for r in sorted(rows, key=lambda r: r["contract_date"])
+                    for src in contract_sources(
+                        r,
+                        contract_fields=_CONCENTRATION_FIELDS,
+                        tender_fields=None,
+                        sigma_fields=_SIGMA_CONTRACT_FIELDS,
+                    )
+                ],
             )
         )
     return out
@@ -656,6 +716,12 @@ def exceptional_procedure_flags(
                 },
                 law_ref=grounds + (f"; {fine} (глоба)" if fine else ""),
                 procurement_id=record.get("id"),
+                sources=contract_sources(
+                    record,
+                    contract_fields=_PROCEDURE_FIELDS,
+                    tender_fields=("SpecialNumber", "ProcedureType", "TenderName"),
+                    sigma_fields=_SIGMA_CONTRACT_FIELDS + ("procedure",),
+                ),
             )
         )
     return out
@@ -773,6 +839,15 @@ def short_offer_deadline_flags(
                 },
                 law_ref=f"{article} (минимален срок за получаване на оферти)",
                 procurement_id=record.get("id"),
+                sources=contract_sources(
+                    record,
+                    contract_fields=_DEADLINE_CONTRACT_FIELDS,
+                    tender_fields=_DEADLINE_TENDER_FIELDS,
+                    note=(
+                        "Датата на обявяване е по-ранната от „Начало на срока за оферти“ и "
+                        "„Дата на публикуване“."
+                    ),
+                ),
             )
         )
     return out
@@ -821,6 +896,13 @@ def bid_at_ceiling_flags(
         title = _short_title(record.get("title"))
         contractor = record.get("contractor_name") or "изпълнителя"
         bids_text = "само една оферта" if bids == 1 else "неизвестен брой оферти"
+        twin_id = index.twin.get(contract_subject_id(record))
+        # SIGMA contributed the bid count when the EOP record has none itself.
+        sigma_twin = (
+            index.by_subject.get(twin_id)
+            if twin_id and bids is not None and record.get("bids_received") is None
+            else None
+        )
         out.append(
             make_flag(
                 rule="bid_at_ceiling",
@@ -859,6 +941,13 @@ def bid_at_ceiling_flags(
                     "чл. 2, ал. 2 ЗОП (конкуренция)"
                 ),
                 procurement_id=record.get("id"),
+                sources=contract_sources(
+                    record,
+                    contract_fields=_CEILING_CONTRACT_FIELDS,
+                    tender_fields=_CEILING_TENDER_FIELDS,
+                    sigma=sigma_twin,
+                    sigma_fields=("id", "unp", "bids_received"),
+                ),
             )
         )
     return out

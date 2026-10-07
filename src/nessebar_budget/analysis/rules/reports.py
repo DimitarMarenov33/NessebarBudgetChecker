@@ -27,6 +27,7 @@ from __future__ import annotations
 import datetime as dt
 from collections.abc import Iterable
 
+from nessebar_budget.analysis.provenance import reports_page_source
 from nessebar_budget.analysis.rules._common import (
     TIER_OPACITY,
     TIER_SIGNAL,
@@ -81,6 +82,7 @@ def missing_report_flags(
     thresholds: Thresholds,
     *,
     now: dt.datetime | None = None,
+    files_by_period: dict[str, list[str]] | None = None,
 ) -> list[dict]:
     """`missing_monthly_report` + `missing_annual_report`.
 
@@ -95,8 +97,13 @@ def missing_report_flags(
       then gets only the annual flag, not also a monthly one.
 
     Subject keys: `report:YYYY-MM` and `annual:YYYY`.
+
+    Sources: the municipality's report archive page, plus the files of that
+    period we *do* have (`files_by_period`: period -> file names, any kind),
+    so a citizen can see what was checked.
     """
     now = now or _now()
+    files_by_period = files_by_period or {}
     have = {
         period
         for period, kind in reports
@@ -152,6 +159,13 @@ def missing_report_flags(
                     "kinds_checked": list(thresholds.report_kinds),
                 },
                 law_ref=_ANNUAL_LAW_REF,
+                sources=[
+                    reports_page_source(
+                        december,
+                        files_by_period.get(december),
+                        kinds=thresholds.report_kinds,
+                    )
+                ],
             )
         )
 
@@ -183,6 +197,11 @@ def missing_report_flags(
                 subject_id=f"report:{period}",
                 details={"period": period, "kinds_checked": list(thresholds.report_kinds)},
                 law_ref=_MONTHLY_LAW_REF,
+                sources=[
+                    reports_page_source(
+                        period, files_by_period.get(period), kinds=thresholds.report_kinds
+                    )
+                ],
             )
         )
     return out

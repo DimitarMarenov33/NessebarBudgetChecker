@@ -46,6 +46,13 @@ set on every row for forward-compatibility, even though the current
 `currency` column to persist it to (out of scope here -- see
 `db/budget_models.py`); it is still recorded in `extra_json`, which *is*
 persisted.
+
+Provenance: every row's `extra_json` carries `source_sheet` ("OTCHET") and
+`source_row` (1-based Excel row number) of the line it was read from.
+
+Period: `detect_period(path)` reads the "до" date of the header's "за
+периода от...до" pair; `parse-budget` stores that as the report's period
+instead of the month the file was published under on nesebar.bg.
 """
 
 from __future__ import annotations
@@ -218,6 +225,10 @@ def _parse_block(
 
         values = _row_values(row, original_currency)
         extra_base = _currency_extra(original_currency, values["raw"])
+        # Provenance: `df` is read with header=None and no skipped rows, so
+        # df index r is Excel row r + 1 of the OTCHET sheet.
+        extra_base["source_sheet"] = SHEET_NAME
+        extra_base["source_row"] = r + 1
 
         if isinstance(major_raw, str) and major_raw.strip().upper() == "ВСИЧКО":
             rows.append(
@@ -316,23 +327,52 @@ def parse_budget_b1(path: str | Path, period: str | None = None) -> dict[str, An
     return {"rows": rows, "skipped": skipped}
 
 
-def _infer_period(df: pd.DataFrame) -> str | None:
-    """Best-effort period inference from the "за периода от...до" header.
+def _is_date(value: Any) -> bool:
+    return hasattr(value, "year") and hasattr(value, "month") and hasattr(value, "day")
 
-    Prefers the *later* ("до") of the two dates on the header's date row:
-    for a monthly `B1` this is the same month as "от" anyway, but for a
-    quarterly `B3` (whose "от" is always the calendar year's 1 January)
-    using the earlier date would misreport a Q4 cumulative report as
-    January.
+
+def _infer_period(df: pd.DataFrame) -> str | None:
+    """The period a B1/B3 report covers, from its own OTCHET header.
+
+    The header reads "за периода от | до" with the two dates on the row
+    below (e.g. 2019-01-01 | 2019-03-31). Both B1 and B3 are year-to-date
+    cumulative, so "от" is always 1 January; the period is the "до" date's
+    month. The cell under the "до" label is used when found; otherwise the
+    *latest* date on the first header row that has any date (never the
+    first one found -- that would report every file as January).
     """
+    head = min(len(df), 25)
+    for i in range(head):
+        for j, cell in enumerate(df.iloc[i]):
+            if not (isinstance(cell, str) and cell.strip().casefold() == "до"):
+                continue
+            for below in range(i + 1, min(i + 3, len(df))):
+                value = df.iloc[below, j]
+                if _is_date(value):
+                    return f"{value.year:04d}-{value.month:02d}"
+
     best: Any = None
-    for i in range(min(len(df), 20)):
-        row = df.iloc[i]
-        for cell in row:
-            if hasattr(cell, "year") and hasattr(cell, "month") and (best is None or cell > best):
+    for i in range(head):
+        for cell in df.iloc[i]:
+            if _is_date(cell) and (best is None or cell > best):
                 best = cell
         if best is not None:
             break
     if best is None:
         return None
     return f"{best.year:04d}-{best.month:02d}"
+
+
+def detect_period(path: str | Path) -> str | None:
+    """Return the period ("YYYY-MM") a B1/B3 workbook *covers* -- the month
+    of its "до" (to) date -- read from the OTCHET sheet's own header, not the
+    month it was published under on nesebar.bg. A quarterly `B3_2019_1`
+    gives "2019-03" (Q1), a `B3_2018_4` posted in January 2019 gives
+    "2018-12". Returns `None` if the file can't be read or states no date.
+    """
+    try:
+        df = pd.read_excel(Path(path), sheet_name=SHEET_NAME, header=None, nrows=25, engine="xlrd")
+    except Exception as exc:  # noqa: BLE001 -- any unreadable file just has no period
+        logger.warning("budget_b1: could not read %s to detect its period: %s", path, exc)
+        return None
+    return _infer_period(df)

@@ -11,6 +11,7 @@ without the database.
 from __future__ import annotations
 
 import csv
+import json
 import re
 from decimal import Decimal
 from pathlib import Path
@@ -206,6 +207,91 @@ def test_flag_permalink_page_exists_for_a_flag_in_the_db(built_site: Path) -> No
     assert "Документи за изискване" in html
     assert "Как да поискате документите" in html
     assert "ЗДОИ" in html
+
+
+def _provenance_site(tmp_path: Path) -> tuple[Path, Session]:
+    """A tiny DB (one BGN capital-ledger row, one EU-funded EOP contract),
+    analysed and built -- independent of what the real DB's flags carry."""
+    import datetime as dt
+
+    from nessebar_budget.analysis.engine import run_full_analysis
+    from nessebar_budget.db.budget_models import BudgetLineItem
+    from nessebar_budget.db.models import Base, BudgetReport
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'tiny.db'}")
+    Base.metadata.create_all(engine)
+    session = Session(engine)
+    report = BudgetReport(
+        period="2022-12",
+        kind="capital_xlsx",
+        url="https://www.nesebar.bg/03-2019/Месечен отчет за 2022 Декември 5206 Несебър.xlsx",
+        file_path="data/cache/nesebar_site/2022/12/Месечен отчет за 2022 Декември 5206 Несебър.xlsx",
+    )
+    session.add(report)
+    session.flush()
+    session.add(
+        BudgetLineItem(
+            report_id=report.id, period="2022-12", unit="Общо", paragraph="5100",
+            object_name="Реконструкция на училище", plan_current=52344.02,
+            spent_period=321082.61, spent_prior=0, estimated_total=52663.06, currency="EUR",
+            extra_json={"row_type": "object", "original_currency": "BGN",
+                        "conversion_rate": 1.95583, "source_sheet": "Общо", "source_row": 19},
+        )
+    )
+    session.add(
+        Procurement(
+            source="eop", source_id="77", title="Доставка", procedure_type="NegotiatedProcedure",
+            contractor_name="X EOOD", contractor_eik="111", contract_value_eur=600_000,
+            contract_date=dt.datetime(2025, 1, 1, tzinfo=dt.UTC).replace(tzinfo=None), url="https://app.eop.bg/today/595341",
+            raw_json={
+                "contract": {"ContractNumber": "77", "TenderNumber": "U77", "TypeOfContract": 1,
+                             "ContractValue": 600000, "Currency": 1},
+                "procedure": {"IsEUFinanced": True, "SpecialNumber": "U77"},
+                "tender_detail": {},
+            },
+        )
+    )
+    session.commit()
+    run_full_analysis(session, now=dt.datetime(2026, 3, 10, tzinfo=dt.UTC).replace(tzinfo=None))
+    session.commit()
+    out = tmp_path / "site"
+    build_site(out, db_url=f"sqlite:///{tmp_path / 'tiny.db'}")
+    return out, session
+
+
+def test_flag_permalink_shows_sources_box(tmp_path: Path) -> None:
+    """Every flag's permalink (and its row on flags/index.html) carries a
+    closed-by-default "Източници" <details> linking the published file/record,
+    with the sheet/row, the leva figures and the conversion note."""
+    from nessebar_budget.db.models import Flag
+
+    site, session = _provenance_site(tmp_path)
+    all_flags = session.scalars(select(Flag)).all()
+    flags = {f.rule: f for f in all_flags}
+    session.close()
+
+    budget_html = (site / "flags" / f"{flags['unplanned_spending'].id}.html").read_text("utf-8")
+    assert "Източници" in budget_html
+    assert '<details class="sources">' in budget_html  # closed by default
+    hrefs = [m.group("url") for m in HREF_SRC_RE.finditer(budget_html)]
+    assert any(h.startswith("https://www.nesebar.bg/") for h in hrefs)
+    # Cyrillic/space file names are percent-encoded in the href.
+    assert not any(" " in h for h in hrefs)
+    assert "лист „Общо“, ред 19" in budget_html
+    assert "102,376 лв." in budget_html and "627,983 лв." in budget_html
+    assert "1 € = 1,95583 лв." in budget_html
+    assert "Как да проверите" in budget_html
+
+    contract_html = (site / "flags" / f"{flags['exceptional_procedure'].id}.html").read_text("utf-8")
+    assert 'href="https://app.eop.bg/today/595341"' in contract_html
+    meta_html = (site / "flags" / f"{flags['eu_funded_irregularity'].id}.html").read_text("utf-8")
+    assert f'href="../flags/{flags["exceptional_procedure"].id}.html"' in meta_html
+
+    index_html = (site / "flags" / "index.html").read_text("utf-8")
+    assert index_html.count('<details class="sources">') == len(all_flags)
+
+    exported = json.loads((site / "data" / "flags.json").read_text("utf-8"))
+    assert all(f["sources"] for f in exported)
 
 
 #: An amount grouped with spaces / thin spaces (the pre-redesign format),

@@ -105,14 +105,22 @@ def description_texts(record: dict[str, Any]) -> list[str]:
     return [t for t in texts if t and t.strip()]
 
 
-def eop_mentions_eu(record: dict[str, Any]) -> bool:
-    _, procedure, detail = eop_parts(record)
-    if procedure.get("IsEUFinanced") is True:
-        return True
+def eu_text_match(record: dict[str, Any]) -> str | None:
+    """The EU-funding wording found in an EOP record's name/descriptions
+    (see `_EU_TEXT_RE`), or None."""
+    _, _, detail = eop_parts(record)
     text = " ".join(
         [str(detail.get("TenderName") or "")] + description_texts(record)
     )
-    return bool(_EU_TEXT_RE.search(text))
+    match = _EU_TEXT_RE.search(text)
+    return " ".join(match.group(0).split()) if match else None
+
+
+def eop_mentions_eu(record: dict[str, Any]) -> bool:
+    _, procedure, _ = eop_parts(record)
+    if procedure.get("IsEUFinanced") is True:
+        return True
+    return eu_text_match(record) is not None
 
 
 @dataclass
@@ -140,6 +148,40 @@ class DatasetIndex:
             return True
         twin = self.twin.get(contract_subject_id(record))
         return bool(twin and twin in self.by_subject and _record_eu_flag(self.by_subject[twin]))
+
+    def eu_sources(self, record: dict[str, Any]) -> list[dict[str, Any]]:
+        """Provenance of `is_eu_funded`: the EOP `IsEUFinanced` field or the
+        matching notice wording, and/or SIGMA's `eu_funded` column (the record
+        itself or its twin)."""
+        from nessebar_budget.analysis.provenance import contract_sources
+
+        out: list[dict[str, Any]] = []
+        records = [record]
+        twin = self.twin.get(contract_subject_id(record))
+        if twin and twin in self.by_subject:
+            records.append(self.by_subject[twin])
+        for rec in records:
+            if rec.get("source") == "sigma" and (rec.get("raw_json") or {}).get("eu_funded"):
+                out += contract_sources(rec, sigma_fields=("id", "unp", "eu_funded"))
+            elif rec.get("source") == "eop":
+                _, procedure, _ = eop_parts(rec)
+                if procedure.get("IsEUFinanced") is True:
+                    out += contract_sources(
+                        rec, contract_fields=None, tender_fields=("SpecialNumber", "IsEUFinanced")
+                    )
+                else:
+                    wording = eu_text_match(rec)
+                    if wording:
+                        out += contract_sources(
+                            rec,
+                            contract_fields=None,
+                            tender_fields=("SpecialNumber", "TenderName"),
+                            note=(
+                                f"Финансирането от ЕС е разпознато по текста на поръчката: "
+                                f"„{wording}“."
+                            ),
+                        )
+        return out
 
     def canonical(self, subject_id: str) -> str:
         """Prefer the EOP side of an EOP/SIGMA twin pair."""

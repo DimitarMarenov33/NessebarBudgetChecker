@@ -18,6 +18,15 @@ rule shapes (see that module's docstring):
   `last_seen_at` bumped), and subjects a rule no longer produces are marked
   `resolved_at`. Meta rules (`eu_funded_irregularity`) run last, over every
   other rule's output. This is what the `analyze` CLI command calls.
+
+Provenance: every flag dict carries `sources` (see `analysis.provenance`),
+persisted as `Flag.sources_json`. To make that possible the engine hands the
+budget rules each line item's `extra_json`/`unit` plus a snapshot of its
+`BudgetReport` (joined on `report_id`, under the private `_report` key), and
+gives the report rules the files it does have per period. Sources of kind
+"flag" (the meta rule's "built on these other flags") get their
+site-relative permalink `flags/<id>.html` filled in after the upsert, once
+every flag has an id.
 """
 
 from __future__ import annotations
@@ -32,6 +41,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from nessebar_budget.analysis.matching import MatchCandidate
+from nessebar_budget.analysis.provenance import KIND_FLAG, budget_report_ref, file_basename
 from nessebar_budget.analysis.rules import (
     MissingValueRule,
     Rule,
@@ -110,6 +120,7 @@ def _procurement_to_dict(p: Procurement) -> dict[str, Any]:
         "bids_received": p.bids_received,
         "contract_date": p.contract_date,
         "published_at": p.published_at,
+        "url": p.url,
         "raw_json": p.raw_json,
     }
 
@@ -118,7 +129,12 @@ def _row_type(extra_json: dict[str, Any] | None) -> str | None:
     return (extra_json or {}).get("row_type")
 
 
-def _budget_row_to_dict(r: BudgetLineItem) -> dict[str, Any]:
+def _budget_row_to_dict(
+    r: BudgetLineItem, report: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    """A capital-ledger row as the budget rules see it. `extra_json`, `unit`
+    and `_report` (the row's `BudgetReport`, see `provenance.budget_report_ref`)
+    are only read by `provenance.budget_object_source`."""
     return {
         "period": r.period,
         "paragraph": r.paragraph,
@@ -127,6 +143,9 @@ def _budget_row_to_dict(r: BudgetLineItem) -> dict[str, Any]:
         "spent_period": _as_float(r.spent_period),
         "spent_prior": _as_float(r.spent_prior),
         "estimated_total": _as_float(r.estimated_total),
+        "unit": r.unit,
+        "extra_json": r.extra_json if isinstance(r.extra_json, dict) else {},
+        "_report": report,
     }
 
 
@@ -207,6 +226,7 @@ def _collect_flags(
     thresholds: Thresholds,
     now: dt.datetime,
     reports: list[tuple[str | None, str | None]] | None = None,
+    report_files: dict[str, list[str]] | None = None,
 ) -> list[dict[str, Any]]:
     eop_contracts = [c for c in contracts if c["source"] == "eop"]
     index = build_index(contracts)
@@ -225,6 +245,12 @@ def _collect_flags(
         latest_period = periods[-1]
         objects_latest = [o for o in objects if o.get("period") == latest_period]
     objects_year_end = _year_end_objects(objects, periods)
+    # period -> the capital-ledger file its rows came from (first seen), for
+    # plan_jump's "absent from the previous file" source.
+    period_reports: dict[str, dict[str, Any]] = {}
+    for o in objects:
+        if o.get("period") and o.get("_report") and o["period"] not in period_reports:
+            period_reports[o["period"]] = o["_report"]
 
     match_candidates = [
         MatchCandidate(
@@ -260,14 +286,17 @@ def _collect_flags(
     flags += overspend_vs_plan_flags(objects_latest, thresholds)
     if dataset_first_period is not None:
         flags += plan_jump_flags(
-            objects_history, thresholds, dataset_first_period=dataset_first_period
+            objects_history,
+            thresholds,
+            dataset_first_period=dataset_first_period,
+            period_reports=period_reports,
         )
     flags += unmatched_spending_flags(objects_latest, match_candidates, thresholds)
     # --- publication of budget reports ---
     # Only when at least one report is known: an empty `budget_reports` means
     # "not scraped yet", not "the municipality published nothing".
     if reports:
-        flags += missing_report_flags(reports, thresholds, now=now)
+        flags += missing_report_flags(reports, thresholds, now=now, files_by_period=report_files)
     # --- meta rules: always last ---
     flags += eu_funded_irregularity_flags(flags, index)
     return flags
@@ -285,6 +314,7 @@ def _apply(flag: Flag, hit: dict[str, Any], now: dt.datetime) -> None:
     flag.procurement_id = hit.get("procurement_id")
     flag.details_json = hit.get("details_json")
     flag.law_ref = hit.get("law_ref")
+    flag.sources_json = list(hit.get("sources") or [])
     flag.last_seen_at = now
 
 
@@ -336,7 +366,30 @@ def _upsert_flags(
             flag.resolved_at = now
             counts[flag.rule].resolved += 1
 
+    _link_flag_sources(session, existing_by_key)
     return counts
+
+
+def _link_flag_sources(session: Session, flags_by_key: dict[tuple[str, str], Flag]) -> None:
+    """Fill in `url` = "flags/<id>.html" (site-relative permalink) on every
+    source of kind "flag" -- the meta rule's references to the flags it is
+    built on, which only get ids once flushed."""
+    pending = [
+        f
+        for f in flags_by_key.values()
+        if any(isinstance(s, dict) and s.get("kind") == KIND_FLAG for s in f.sources_json or [])
+    ]
+    if not pending:
+        return
+    session.flush()
+    for flag in pending:
+        linked = []
+        for src in flag.sources_json or []:
+            if isinstance(src, dict) and src.get("kind") == KIND_FLAG:
+                target = flags_by_key.get((src.get("rule"), src.get("subject_key")))
+                src = {**src, "url": f"flags/{target.id}.html" if target and target.id else None}
+            linked.append(src)
+        flag.sources_json = linked  # a new list, so the JSON column is marked dirty
 
 
 def run_full_analysis(
@@ -354,17 +407,36 @@ def run_full_analysis(
     procurement_rows = session.scalars(select(Procurement)).all()
     contracts = [_procurement_to_dict(p) for p in procurement_rows]
 
+    report_rows = session.execute(
+        select(
+            BudgetReport.id,
+            BudgetReport.period,
+            BudgetReport.kind,
+            BudgetReport.url,
+            BudgetReport.file_path,
+        )
+    ).all()
+    report_by_id = {r.id: budget_report_ref(r) for r in report_rows}
+
     budget_rows = session.scalars(
         select(BudgetLineItem).where(BudgetLineItem.unit == "Общо")
     ).all()
     objects = [
-        {**_budget_row_to_dict(r), "_row_type": _row_type(r.extra_json)} for r in budget_rows
+        _budget_row_to_dict(r, report_by_id.get(r.report_id))
+        for r in budget_rows
+        if _row_type(r.extra_json) == "object"
     ]
-    objects = [o for o in objects if o.pop("_row_type") == "object"]
 
-    reports = [tuple(row) for row in session.execute(select(BudgetReport.period, BudgetReport.kind))]
+    reports = [(r.period, r.kind) for r in report_rows]
+    report_files: dict[str, list[str]] = defaultdict(list)
+    for r in report_rows:
+        name = file_basename(r.file_path, r.url)
+        if r.period and name:
+            report_files[r.period].append(name)
 
-    flags = _collect_flags(contracts, objects, thresholds, now, reports=reports)
+    flags = _collect_flags(
+        contracts, objects, thresholds, now, reports=reports, report_files=dict(report_files)
+    )
     counts = _upsert_flags(session, flags, FULL_RULE_NAMES, now)
 
     tier_counts: dict[str, int] = defaultdict(int)

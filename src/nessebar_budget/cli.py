@@ -14,17 +14,11 @@ from sqlalchemy import select
 
 from nessebar_budget.analysis.engine import run_full_analysis
 from nessebar_budget.config import get_settings
-from nessebar_budget.db.budget_repo import (
-    upsert_budget_line_items,
-    upsert_budget_report,
-    upsert_cash_execution_lines,
-)
-from nessebar_budget.db.models import BudgetReport, Flag
+from nessebar_budget.db.budget_repo import parse_budget_reports, upsert_budget_report
+from nessebar_budget.db.models import Flag
 from nessebar_budget.db.repo import upsert_procurements
 from nessebar_budget.db.session import get_session, init_db
 from nessebar_budget.notify.telegram import send_flags_notification
-from nessebar_budget.parsers.budget_b1 import parse_budget_b1
-from nessebar_budget.parsers.budget_capital import parse_budget_capital
 from nessebar_budget.scrapers.eop import EopScraper
 from nessebar_budget.scrapers.minfin import MinfinScraper
 from nessebar_budget.scrapers.nesebar_site import NesebarSiteScraper
@@ -137,69 +131,55 @@ def scrape_command(
 @app.command("parse-budget")
 def parse_budget_command(
     period: str = typer.Option(
-        None, "--period", help="Only parse cached BudgetReport rows for this YYYY-MM period."
+        None,
+        "--period",
+        help="Only (re)parse reports covering this YYYY-MM period (as stated in the file itself).",
+    ),
+    rebuild: bool = typer.Option(
+        False,
+        "--rebuild",
+        help="Delete every parsed line item first and re-parse all cached files from scratch.",
     ),
 ) -> None:
-    """Parse cached budget-report files (kinds `B1` and `capital_xlsx`) into
-    `BudgetLineItem`/`CashExecutionLine`, and print a summary."""
+    """Parse cached budget-report files (kinds `B1`, `B3` and `capital_xlsx`)
+    into `CashExecutionLine`/`BudgetLineItem`, and print a summary.
+
+    Each file's period is read from its own header (not the nesebar.bg
+    heading it was published under) and stored on the report and its rows.
+    Only one file per period is parsed for each family (cash: B1/B3;
+    capital: capital_xlsx) -- the others are marked as skipped duplicates.
+    Rows of skipped reports, and rows left under a report's old period, are
+    deleted first, so re-running is idempotent.
+    """
     init_db()
 
     with get_session() as session:
-        query = select(BudgetReport).where(BudgetReport.kind.in_(["B1", "capital_xlsx"]))
-        if period:
-            query = query.where(BudgetReport.period == period)
-        reports = session.scalars(query).all()
-
-        files_parsed = 0
-        line_items = 0
-        cash_lines = 0
-        mismatches = 0
-        failures: list[tuple[str, str]] = []
-
-        for report in reports:
-            if not report.file_path or not Path(report.file_path).exists():
-                failures.append((report.file_path or f"report #{report.id}", "file missing on disk"))
-                continue
-            try:
-                if report.kind == "capital_xlsx":
-                    result = parse_budget_capital(report.file_path, period=report.period)
-                    inserted, updated = upsert_budget_line_items(
-                        session, report.id, result["rows"]
-                    )
-                    line_items += inserted + updated
-                    mismatches += len(result["mismatches"])
-                    report.parsed_json = {
-                        "row_count": len(result["rows"]),
-                        "mismatches": result["mismatches"],
-                    }
-                else:  # "B1"
-                    result = parse_budget_b1(report.file_path, period=report.period)
-                    inserted, updated = upsert_cash_execution_lines(
-                        session, report.id, result["rows"]
-                    )
-                    cash_lines += inserted + updated
-                    report.parsed_json = {
-                        "row_count": len(result["rows"]),
-                        "skipped": result["skipped"],
-                    }
-                files_parsed += 1
-            except Exception as exc:  # noqa: BLE001 -- keep ingesting the remaining files
-                logger.warning("parse-budget: failed to parse %s: %s", report.file_path, exc)
-                failures.append((report.file_path, str(exc)))
-
+        summary = parse_budget_reports(session, period=period, rebuild=rebuild)
         session.commit()
 
     table = Table(title="parse-budget summary")
     table.add_column("metric")
     table.add_column("value", justify="right")
-    table.add_row("Files parsed", str(files_parsed))
-    table.add_row("Files failed", str(len(failures)))
-    table.add_row("Budget line items (capital ledger)", str(line_items))
-    table.add_row("Cash execution lines (B1)", str(cash_lines))
-    table.add_row("Validation mismatches logged", str(mismatches))
+    table.add_row("Files parsed", str(summary.files_parsed))
+    table.add_row("Files failed", str(len(summary.failures)))
+    table.add_row("Duplicates skipped (same family and period)", str(summary.skipped_duplicates))
+    table.add_row("Reclassified as 'other' (not a capital ledger)", str(summary.reclassified_other))
+    table.add_row("Kinds refined (B1 -> B3, IB1 -> IB3)", str(summary.kinds_refined))
+    table.add_row("Report periods changed", str(summary.periods_changed))
+    table.add_row("Stale line items deleted", str(summary.rows_deleted))
+    table.add_row("Budget line items (capital ledger)", str(summary.line_items))
+    table.add_row("Cash execution lines (B1/B3)", str(summary.cash_lines))
+    table.add_row("Validation mismatches logged", str(summary.mismatches))
     console.print(table)
 
-    for file_path, reason in failures:
+    for dup in summary.duplicates:
+        console.print(
+            f"[yellow]SKIPPED[/yellow] {dup['family']} {dup['period']}: {dup['skipped_file']} "
+            f"(#{dup['skipped_id']}) -- kept {dup['kept_file']} (#{dup['kept_id']})"
+        )
+    for other in summary.others:
+        console.print(f"[yellow]OTHER[/yellow] {other['file']} (#{other['report_id']})")
+    for file_path, reason in summary.failures:
         console.print(f"[red]FAILED[/red] {file_path}: {reason}")
 
 

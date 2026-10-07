@@ -4,8 +4,9 @@
 creates tables that don't exist yet -- it never alters an *existing* table's
 columns. `data/nessebar.db` is committed to the repo with an old, empty-ish
 `flags` table (no `subject_type`/`subject_id`/`subject_key`/`details_json`/
-`law_ref`/`first_seen_at`/`last_seen_at`/`resolved_at`, and later no
-`tier`/`explanation`/`documents_json` columns), predating those fields being
+`law_ref`/`first_seen_at`/`last_seen_at`/`resolved_at`, later no
+`tier`/`explanation`/`documents_json`, and later still no `sources_json`
+columns), predating those fields being
 added to `db.models.Flag`. This module adds them with
 plain `ALTER TABLE ... ADD COLUMN` statements, each guarded by a check
 against `PRAGMA table_info`, so running it repeatedly (every `init_db()`
@@ -40,6 +41,8 @@ _NEW_FLAG_COLUMNS: tuple[tuple[str, str], ...] = (
     ("tier", "VARCHAR(16)"),
     ("explanation", "TEXT"),
     ("documents_json", "JSON"),
+    # Provenance ("Източници") of every flag (2026-10-07).
+    ("sources_json", "JSON"),
 )
 
 _UNIQUE_INDEX_SQL = (

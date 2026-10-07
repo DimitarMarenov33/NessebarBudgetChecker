@@ -24,6 +24,7 @@ Every flag row (`db.models.Flag`) carries:
 | `law_ref` | The legal citation, verified against `docs/law/*.txt` (see below). |
 | `subject_type` / `subject_id` / `subject_key` | What the flag is about (`contract`, `contractor`, `contract_group`, `procedure`, `budget_object`, `report`) and its upsert key. |
 | `details_json` | The supporting numbers (dates, amounts, members of a group, ...). |
+| `sources_json` | Provenance ("Източници"): the published files/records the numbers come from -- see "Provenance" below. |
 
 **Tone.** Neutral, never accusatory: "може да сочи към нередност",
 "изисква обяснение", "следва да се поиска". A flag means "this is worth a
@@ -54,6 +55,38 @@ project brief) and the Закон за счетоводството (cited only 
 първичните счетоводни документи", no article number). ЗОП states thresholds
 in leva; data is in EUR, converted at the fixed peg `BGN_EUR_RATE =
 1.95583`.
+
+## Provenance (`sources_json`, `analysis/provenance.py`)
+
+Every flag carries a list of sources so a citizen can check it against the
+municipality's own published files. Each entry: `kind`
+(`budget_file` | `eop_contract` | `eop_tender` | `sigma` | `reports_page` |
+`flag`), `label` (Bulgarian, e.g. "Разчет за капиталовите разходи — декември
+2022 г."), `url` (the original public URL; for `flag`, the site-relative
+permalink `flags/<id>.html`), `file` (basename of the municipal file),
+`sheet`, `row` (1-based spreadsheet row), `period`, `fields` (each
+`{name, value, value_eur, [currency], [label]}`: `name` is the column header
+or API key as it appears in the source, `value` the raw value as published,
+`label` a Bulgarian gloss for API keys) and `note`. Rules pass `sources=` to
+`make_flag`; `analyze` upserts it with every other rule-owned column, and
+`db/migrate.py` adds the column idempotently.
+
+| Rules | Sources |
+|---|---|
+| `unplanned_spending`, `overspend_vs_plan`, `unmatched_spending`, `missing_quantity` (§ 52 scope) | The capital-ledger file the object's row was read from (`BudgetLineItem.report_id` -> `BudgetReport.url`/`file_path`), sheet `extra_json.source_sheet` (fallback: the row's `unit`, which *is* the worksheet title), row `extra_json.source_row` (None until the parse step records it), and the four column values ("Сметна стойност", "Усвоено до края на предходната година", "Уточнен план", "Усвоено към отчетния период") or the subset the rule uses. |
+| `plan_jump` | Both periods' files with "Уточнен план"; a mid-year new object cites the file it first appears in plus the previous period's file (where it is absent). |
+| contract rules (`late_publication`, `annex_*`, `exceptional_procedure`, `short_offer_deadline`, `bid_at_ceiling`, `missing_value`, `price_unverifiable`, `missing_quantity`) | The ЦАИС ЕОП record (`Procurement.url`, `app.eop.bg/today/<TenderId>`): `raw_json.contract` fields from `GetContractsByOrganization` (ContractNumber, TenderNumber, ContractDate, TedPublishDate, ContractValue/CurrentContractValue with their Currency, SupplierName, RegisterNumberList, ...) and `raw_json.procedure`/`tender_detail` fields from `GetProcurementsByOrganization`/`GetPublishedTenderDetails` (EstimatedValue, ProcedureType, PublicationDate, OfferPhase*Date, ...) -- only the fields that rule reads. |
+| SIGMA-based (`single_bidder`; `bid_at_ceiling` when the bid count comes from the SIGMA twin; SIGMA-only records) | A `sigma` source: `https://sigma.midt.bg/contracts.csv?authority=000057122`, the row's `id`, and the CSV columns used (`bids_received`, `unp`, `value_eur`, ...). |
+| `contractor_concentration`, `splitting`, `near_threshold` | One ЦАИС ЕОП source per member contract (or the procedure's estimate). |
+| `missing_monthly_report`, `missing_annual_report` | `https://www.nesebar.bg/reports.html`, the B1/B3 kinds checked, and the files of that period we *do* have. |
+| `eu_funded_irregularity` | Each underlying flag (`kind: "flag"`, permalink filled in by the engine after the upsert) plus where the EU funding is read from: SIGMA `eu_funded`, EOP `IsEUFinanced`, or the matched notice wording. |
+
+**Leva.** Pre-2026 budget files are published in leva; the parser stores EUR
+(2 dp) with `extra_json.original_currency = "BGN"`/`conversion_rate`, so a
+budget source's `value` is computed back (EUR × 1.95583, `currency: "BGN"`).
+The EUR figure was rounded to the cent, so the round trip can be off by ~1
+стотинка; a result within 0.01 лв. of a whole lev is reported as that lev
+(e.g. 627 983, not 627 982.99 -- the files publish whole leva).
 
 ## Summary (run on `data/nessebar.db`, 2026-10-07)
 
@@ -386,6 +419,16 @@ An object's `plan_current` rising month-over-month by > 50% **and** >
 historical transition is checked, so past jumps never auto-resolve (they
 are facts). Legal anchor: ЗПФ чл. 124, ал. 2; ЗМСМА чл. 22, ал. 2 (council
 acts published within 7 days).
+
+**Within one calendar year only.** Each year's capital ledger is a new
+annual budget, so consecutive periods are compared only when both fall in
+the same year (2022-12 -> 2023-03 is never a "jump"), and the "new object"
+case requires the object's first period to be later than the first
+available period *of that year* across the whole dataset (an object first
+seen in 2023-03, when January/February 2023 were not published, belongs to
+the 2023 initial plan). Added 2026-10-07 after the parse step started
+dating files by their content: 25 of 93 open flags compared December with
+the next year.
 
 ### `unmatched_spending`
 

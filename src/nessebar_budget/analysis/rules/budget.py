@@ -5,7 +5,9 @@ Inputs are capital-ledger objects ("Разчет за финансиране н�
 разходи", `db.budget_models.BudgetLineItem`, unit == "Общо", row_type ==
 "object"), as flat dicts with `period`, `paragraph`, `object_name`,
 `plan_current`, `spent_period` (cumulative this year), `spent_prior`,
-`estimated_total`.
+`estimated_total`. The engine also attaches each row's `extra_json`/`unit`
+and its `BudgetReport` (`_report`), which `provenance.budget_object_source`
+turns into the flag's "Източници" (file, sheet, row, the leva figures).
 """
 
 from __future__ import annotations
@@ -14,6 +16,7 @@ from itertools import pairwise
 from typing import Any
 
 from nessebar_budget.analysis.matching import MatchCandidate, find_best_match
+from nessebar_budget.analysis.provenance import budget_file_source, budget_object_source
 from nessebar_budget.analysis.rules._common import (
     TIER_SIGNAL,
     TIER_VIOLATION,
@@ -133,6 +136,7 @@ def unplanned_spending_flags(
                     "чл. 102, ал. 1 ЗПФ; чл. 124, ал. 2 ЗПФ (промените се одобряват от "
                     "общинския съвет)"
                 ),
+                sources=[budget_object_source(obj)],
             )
         )
     return out
@@ -202,6 +206,7 @@ def overspend_vs_plan_flags(
                     "чл. 124, ал. 2 ЗПФ (промените по общинския бюджет се одобряват от "
                     "общинския съвет); чл. 125 ЗПФ (компенсирани промени)"
                 ),
+                sources=[budget_object_source(obj, ("plan_current", "spent_period"))],
             )
         )
     return out
@@ -227,17 +232,35 @@ def plan_jump_flags(
     thresholds: Thresholds,
     *,
     dataset_first_period: str,
+    period_reports: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """`plan_jump` (signal): a capital budget object whose plan jumped
     month-over-month by more than 50% AND more than 100,000 EUR, or a new
     object appearing mid-year with an initial plan over 250,000 EUR.
 
+    Both cases stay within one calendar year: each year's capital ledger is
+    a new annual budget, so a December -> next-year comparison (e.g.
+    2022-12 -> 2023-03) is not a mid-year jump and is never made; and an
+    object first seen in the first available period *of its year* (the
+    dataset's periods, e.g. 2023-03 when Jan/Feb 2023 are not published) is
+    part of that year's initial plan, not "mid-year".
+
     `objects_history` maps (paragraph, object_name) -> that object's rows.
+    `period_reports` (period -> report snapshot, optional) lets a "new
+    object" flag also cite the previous period's file, where it is absent.
+    Sources: both periods' files (the plan before and after).
     """
+    period_reports = period_reports or {}
     ratio = thresholds.plan_jump_ratio
     abs_eur = thresholds.plan_jump_abs_eur
     new_object_min = thresholds.new_object_min_eur
     out: list[dict[str, Any]] = []
+
+    # First available period of each year, across every object's rows.
+    year_first_period: dict[str, str] = {}
+    all_periods = {r["period"] for rows in objects_history.values() for r in rows if r.get("period")}
+    for period in sorted(all_periods | {dataset_first_period}):
+        year_first_period.setdefault(period[:4], period)
 
     for (paragraph, name), rows in objects_history.items():
         ordered = sorted(rows, key=lambda r: r["period"])
@@ -246,6 +269,8 @@ def plan_jump_flags(
         subject_base = f"{paragraph or '?'}:{name}"
 
         for prev, cur in pairwise(ordered):
+            if prev["period"][:4] != cur["period"][:4] or prev["period"] == cur["period"]:
+                continue  # a new year's budget (or a duplicate period), not a jump
             prev_plan = float(prev.get("plan_current") or 0)
             cur_plan = float(cur.get("plan_current") or 0)
             if prev_plan <= 0:
@@ -284,12 +309,21 @@ def plan_jump_flags(
                         "increase_pct": round((cur_plan / prev_plan - 1) * 100, 1),
                     },
                     law_ref=_PLAN_JUMP_LAW_REF,
+                    sources=[
+                        budget_object_source(prev, ("plan_current",)),
+                        budget_object_source(cur, ("plan_current",)),
+                    ],
                 )
             )
 
         first_row = ordered[0]
         first_plan = float(first_row.get("plan_current") or 0)
-        if first_row["period"] != dataset_first_period and first_plan > new_object_min:
+        first_period = first_row["period"]
+        mid_year = first_period not in (
+            dataset_first_period,
+            year_first_period.get(first_period[:4]),
+        )
+        if mid_year and first_plan > new_object_min:
             out.append(
                 make_flag(
                     rule="plan_jump",
@@ -315,13 +349,35 @@ def plan_jump_flags(
                         "paragraph": paragraph,
                         "first_period": first_row["period"],
                         "dataset_first_period": dataset_first_period,
+                        "year_first_period": year_first_period.get(first_period[:4]),
                         "initial_plan": first_plan,
                     },
                     law_ref=_PLAN_JUMP_LAW_REF,
+                    sources=_new_object_sources(first_row, name, period_reports),
                 )
             )
 
     return out
+
+
+def _new_object_sources(
+    first_row: dict[str, Any], name: str, period_reports: dict[str, Any]
+) -> list[dict[str, Any]]:
+    """The file the object first appears in, plus the previous period's file
+    (where it is absent) when we know it."""
+    sources = [budget_object_source(first_row, ("plan_current",))]
+    earlier = sorted(p for p in period_reports if p < first_row["period"])
+    if earlier:
+        previous = earlier[-1]
+        sources.insert(
+            0,
+            budget_file_source(
+                period_reports[previous],
+                previous,
+                note=f"Обектът „{name}“ не фигурира в този файл (предходния отчетен период).",
+            ),
+        )
+    return sources
 
 
 # ---------------------------------------------------------------------------
@@ -391,6 +447,16 @@ def unmatched_spending_flags(
                     "direct_award_threshold_eur": round(threshold_eur, 2),
                 },
                 law_ref=thresholds.direct_award_law_ref,
+                sources=[
+                    budget_object_source(
+                        obj,
+                        ("spent_period",),
+                        note=(
+                            f"Сравнихме наименованието и сумата с {len(contract_candidates)} "
+                            "публикувани договора от ЦАИС ЕОП и SIGMA и не открихме съответстващ."
+                        ),
+                    )
+                ],
             )
         )
     return out

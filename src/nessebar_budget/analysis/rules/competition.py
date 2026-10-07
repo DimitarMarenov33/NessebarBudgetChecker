@@ -29,6 +29,7 @@ from itertools import pairwise
 from typing import Any
 
 from nessebar_budget.analysis.matching import distinctive_tokens, jaccard, tokenize
+from nessebar_budget.analysis.provenance import contract_sources
 from nessebar_budget.analysis.rules._common import (
     PROCEDURE_REGIME_TIER,
     TIER_OPACITY,
@@ -54,6 +55,15 @@ _CATEGORY_LABEL = {
     "supplies": "доставки и услуги",
     "annex2": "услуги по приложение № 2",
 }
+#: Provenance: what each member contract contributes (date, value, regime).
+_MEMBER_FIELDS = (
+    "ContractNumber", "TenderNumber", "ContractDate", "ContractValue", "Currency",
+    "ProcedureType", "SupplierName", "RegisterNumberList",
+)
+_ESTIMATE_FIELDS = (
+    "SpecialNumber", "ProcedureType", "EstimatedValue", "Currency", "PublicationDate",
+    "OfferPhaseStartDate",
+)
 _REGIME_LABEL = {
     1: "събиране на оферти с обява",
     2: "публично състезание",
@@ -366,6 +376,12 @@ def _splitting_flag(
         },
         law_ref=thresholds.splitting_law_ref,
         procurement_id=anchor.members[0].get("id"),
+        sources=[
+            src
+            for u in group
+            for r in u.members
+            for src in contract_sources(r, contract_fields=_MEMBER_FIELDS, tender_fields=None)
+        ],
     )
 
 
@@ -476,6 +492,17 @@ def near_threshold_flags(
                 },
                 law_ref=thresholds.near_threshold_law_ref,
                 procurement_id=rep.get("id"),
+                sources=(
+                    contract_sources(rep, contract_fields=None, tender_fields=_ESTIMATE_FIELDS)
+                    if estimate
+                    else [
+                        src
+                        for r in signed
+                        for src in contract_sources(
+                            r, contract_fields=_MEMBER_FIELDS, tender_fields=None
+                        )
+                    ]
+                ),
             )
         )
     return out

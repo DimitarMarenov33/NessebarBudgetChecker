@@ -7,12 +7,19 @@ regardless of how far it actually reaches), grouped under `<h4>` headings
 such as "Отчети за касово изпълнение на бюджета към 31.08.2026 г." -- see
 `docs/sources/BUDGET_FORMS.md` and `docs/sources/INVENTORY.md` §1.
 
-Each heading reliably states the report's as-of date, so that is used as
-the primary source of a file's (year, month); the filename itself (the
-standard `B1_YYYY_M_5206.xls` / `IB1_YYYY_M_5206_<SUFFIX>.xls` pattern, or a
-friendly name like `august2026.xlsx`) is classified into a `kind` and used
-as a *fallback* period source (with a lower `confidence`) for the rare link
-that isn't under a dated heading.
+Each heading states the date the files under it were *published for*, which
+is only a first guess at the period a file covers: quarterly `B3` files and
+capital-ledger re-uploads are often posted under the following month's
+heading (e.g. `B3_2018_4` -- Q4 2018 -- under "към 31.01.2019"). The
+heading month is still what the scraper records (and what the cache folder
+is named after); `parse-budget` then replaces it with the period stated in
+the file's own header (see `parsers.budget_b1.detect_period` /
+`parsers.budget_capital.detect_period`) and keeps the heading month as
+`parsed_json["heading_period"]`. The filename itself (the standard
+`B1_YYYY_M_5206.xls` / `B3_YYYY_Q_5206.xls` / `IB1_..._<SUFFIX>.xls`
+pattern, or a friendly name like `august2026.xlsx`) is classified into a
+`kind` and used as a *fallback* period source (with a lower `confidence`)
+for the rare link that isn't under a dated heading.
 
 robots.txt sets `Crawl-delay: 10` for this host; `delay` (default 10s)
 is enforced between every outgoing HTTP request this scraper makes.
@@ -45,20 +52,28 @@ _UA = (
     "contact: dev@gmu.online; httpx)"
 )
 
+_IB_SUFFIXES = ("DES", "DMP", "K33", "KSF", "RA")
+
 #: kinds this scraper recognises and will actually download/catalog as
 #: BudgetReport rows; anything else is classified but left alone (the page
-#: also links PDFs of scanned audits, energy-efficiency reports, etc.).
+#: also links PDFs of scanned audits, energy-efficiency reports, etc.) --
+#: except `.xlsx` files, see `_should_download`. `B1` is the monthly cash
+#: report, `B3` the quarterly one (same OTCHET schema), `IB1_*`/`IB3_*` their
+#: EU-funds/trust-account siblings.
 BUDGET_REPORT_KINDS = {
     "B1",
-    "IB1_DES",
-    "IB1_DMP",
-    "IB1_K33",
-    "IB1_KSF",
-    "IB1_RA",
+    "B3",
+    *(f"IB1_{suffix}" for suffix in _IB_SUFFIXES),
+    *(f"IB3_{suffix}" for suffix in _IB_SUFFIXES),
     "capital_xlsx",
 }
 
-_B1_RE = re.compile(r"(?:^|_)i?b[13]_(\d{4})_(\d{1,2})_(\d+)", re.IGNORECASE)
+_B1_RE = re.compile(r"(?:^|_)i?b([13])_(\d{4})_(\d{1,2})_(\d+)", re.IGNORECASE)
+#: `.xlsx` files on the reports page that are *not* the monthly capital
+#: ledger: `Budget_YYYY_5206.xlsx` (annual budget macro),
+#: `NaturiPokazateli_YYYY_5206.xlsx` (natural indicators), `kp01.01.16.xlsx`
+#: (the 2016 capital programme, older layout).
+_NON_LEDGER_XLSX_RE = re.compile(r"^(?:budget[_\-]|naturi|kp[\d._])", re.IGNORECASE)
 _SUFFIX_RE = re.compile(r"_(des|dmp|k33|ksf|ra)$", re.IGNORECASE)
 _HEADING_DATE_RE = re.compile(r"(\d{2})\.(\d{2})\.(\d{4})")
 
@@ -78,31 +93,44 @@ def classify_filename(filename: str) -> dict[str, Any]:
     """Classify a report filename into a `kind`, with a best-effort
     (year, month) and a `confidence` ("high"/"medium"/"low"/"none").
 
-    `B1_YYYY_M_5206.xls` / `IB1_YYYY_M_5206_<SUFFIX>.xls` (and the quarterly
-    `B3`/`IB3` siblings, which share the same naming scheme and schema) are
-    parsed exactly, at "high" confidence. Friendly-named `.xlsx` files (the
+    `B1_YYYY_M_5206.xls` / `IB1_YYYY_M_5206_<SUFFIX>.xls` (monthly) and
+    `B3_YYYY_Q_5206.xls` / `IB3_YYYY_Q_5206_<SUFFIX>.xls` (quarterly, same
+    schema) are parsed exactly, at "high" confidence, into kinds `B1`/`B3`/
+    `IB1_<SUFFIX>`/`IB3_<SUFFIX>`. A `B3`'s third number is the *quarter*,
+    so its month is the quarter-end month (`B3_2019_1` -> 2019-03), which is
+    what the file's own "до" date says too. Friendly-named `.xlsx` files (the
     capital-expenditure ledger) are matched against a Bulgarian or English
     month name, then a trailing `MMYY` numeral, in decreasing order of
-    confidence. Anything else is `kind="other"`.
+    confidence -- except the known non-ledger spreadsheets
+    (`Budget_*`, `NaturiPokazateli_*`, `kp*`), which are `kind="other"`.
+    Anything else is `kind="other"`.
     """
     lower = filename.lower()
     stem = filename.rsplit(".", 1)[0] if "." in filename else filename
 
     m = _B1_RE.search(lower)
     if m:
-        year, month, ebk_code = int(m.group(1)), int(m.group(2)), m.group(3)
+        form = m.group(1)  # "1" monthly, "3" quarterly
+        year, number, ebk_code = int(m.group(2)), int(m.group(3)), m.group(4)
+        month = number * 3 if form == "3" and 1 <= number <= 4 else number
         if lower.startswith("ib"):
             sm = _SUFFIX_RE.search(stem.lower())
-            kind = f"IB1_{sm.group(1).upper()}" if sm else "other"
+            kind = f"IB{form}_{sm.group(1).upper()}" if sm else "other"
         else:
-            kind = "B1"
-        return {
+            kind = f"B{form}"
+        info: dict[str, Any] = {
             "kind": kind,
             "year": year,
             "month": month,
             "ebk_code": ebk_code,
             "confidence": "high",
         }
+        if form == "3":
+            info["quarter"] = number
+        return info
+
+    if lower.endswith(".xlsx") and _NON_LEDGER_XLSX_RE.match(filename):
+        return {"kind": "other", "year": None, "month": None, "confidence": "none"}
 
     if lower.endswith(".xlsx"):
         for name, num in _MONTHS_BG.items():
@@ -134,6 +162,15 @@ def classify_filename(filename: str) -> dict[str, Any]:
         return {"kind": "capital_xlsx", "year": None, "month": None, "confidence": "none"}
 
     return {"kind": "other", "year": None, "month": None, "confidence": "none"}
+
+
+def _should_download(record: dict[str, Any]) -> bool:
+    """Recognised budget-report kinds, plus every `.xlsx` link: before the
+    non-ledger spreadsheets (`Budget_*`, `NaturiPokazateli_*`, `kp*`) were
+    classified `other` they were fetched as `capital_xlsx`, and they are
+    still downloaded and catalogued (as `other`) so nothing previously
+    cached stops being refreshed -- `parse-budget` simply ignores them."""
+    return record["kind"] in BUDGET_REPORT_KINDS or record["filename"].lower().endswith(".xlsx")
 
 
 class NesebarSiteScraper(Scraper):
@@ -297,7 +334,7 @@ class NesebarSiteScraper(Scraper):
             self.delay = delay
 
         all_records = self.list_reports()
-        candidates = [r for r in all_records if r["kind"] in BUDGET_REPORT_KINDS and r["period"]]
+        candidates = [r for r in all_records if _should_download(r) and r["period"]]
         if since:
             candidates = [r for r in candidates if r["period"] >= since]
         candidates.sort(key=lambda r: (r["period"], r["kind"], r["filename"]))

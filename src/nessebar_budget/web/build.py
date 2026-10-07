@@ -27,6 +27,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote, urlsplit, urlunsplit
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from sqlalchemy import create_engine, select
@@ -858,6 +859,7 @@ _DETAIL_LABELS: dict[str, str] = {
     "quantity_found_in": "Количество е открито в",
     "first_period": "Първи отчетен период за обекта",
     "dataset_first_period": "Начало на наличните данни",
+    "year_first_period": "Първи наличен отчет за годината",
     "initial_plan": "Начален план",
     # Rules added 2026-10-07 (splitting, annex_over_cap, exceptional_procedure,
     # short_offer_deadline, bid_at_ceiling, near_threshold, unplanned_spending,
@@ -966,7 +968,10 @@ def _format_detail_value(key: str, value: Any) -> str | None:
         return fmt_eur(value)
     if key.endswith("_bgn"):
         return f"{fmt_num(value)} лв."
-    if key in ("period", "from_period", "to_period", "first_period", "dataset_first_period", "expected_period"):
+    if key in (
+        "period", "from_period", "to_period", "first_period", "dataset_first_period",
+        "year_first_period", "expected_period",
+    ):
         return fmt_period(value)
     if key in ("contract_date", "ted_publish_date", "due_date", "notice_date", "first_date", "last_date"):
         return fmt_date(value)
@@ -1027,6 +1032,149 @@ _DEFAULT_DOCUMENTS_BY_SUBJECT_TYPE: dict[str, list[str]] = {
     ],
 }
 _DEFAULT_DOCUMENTS_FALLBACK = ["документите, на които се основава този сигнал"]
+
+
+# --------------------------------------------------------------------------
+# Provenance ("Източници") box
+# --------------------------------------------------------------------------
+
+#: Kinds of `Flag.sources_json` entries (see `analysis/provenance.py`).
+_SOURCE_KIND_LABELS = {
+    "budget_file": "Файл на общината",
+    "eop_contract": "ЦАИС ЕОП",
+    "eop_tender": "ЦАИС ЕОП",
+    "sigma": "SIGMA",
+    "reports_page": "Сайт на общината",
+    "flag": "Сигнал на този сайт",
+}
+_TYPE_OF_CONTRACT_CODE_LABELS = {1: "услуги", 2: "доставки", 3: "строителство"}
+_ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+SOURCES_BGN_NOTE = (
+    "Стойностите са публикувани в лева и са преобразувани по фиксирания курс 1 € = 1,95583 лв."
+)
+
+
+def external_href(url: str | None) -> str:
+    """Percent-encode the path/query of an original public URL (municipal file
+    names carry spaces and Cyrillic) so it is a valid href; already-encoded
+    sequences are left alone."""
+    if not url:
+        return ""
+    parts = urlsplit(url)
+    path = quote(parts.path, safe="/%:@!$&'()*+,;=-._~")
+    query = quote(parts.query, safe="=&%:/?+,;@!$'()*-._~")
+    return urlunsplit((parts.scheme, parts.netloc, path, query, parts.fragment))
+
+
+def _fmt_amount(value: float) -> str:
+    """Comma thousands, up to 2 decimals (dropped when whole): 627,983 / 321,082.61."""
+    text = f"{value:,.2f}"
+    return text.removesuffix(".00")
+
+
+def _fmt_source_value(field: dict[str, Any]) -> tuple[str, bool]:
+    """(display text, is_numeric) for one source field's raw value."""
+    value = field.get("value")
+    currency = field.get("currency")
+    if value is None or value == "":
+        return "—", False
+    if isinstance(value, bool):
+        return ("да" if value else "не"), False
+    if isinstance(value, (int, float)):
+        if field.get("name") == "TypeOfContract" and int(value) in _TYPE_OF_CONTRACT_CODE_LABELS:
+            return f"{int(value)} ({_TYPE_OF_CONTRACT_CODE_LABELS[int(value)]})", False
+        text = _fmt_amount(float(value))
+        if currency == "BGN":
+            return f"{text} лв.", True
+        if currency == "EUR":
+            return f"{text} €", True
+        return text, True
+    text = str(value)
+    if _ISO_DATE_RE.match(text):
+        return fmt_date(text), True
+    return text, False
+
+
+def _source_views(raw: Any) -> list[dict[str, Any]]:
+    """`Flag.sources_json` -> display dicts for the "Източници" box (labels,
+    hrefs, "лист X, ред Y", formatted field values). Tolerates a missing
+    column, a JSON string, and entries missing any key."""
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except ValueError:
+            raw = None
+    if not isinstance(raw, list):
+        return []
+    views = []
+    for src in raw:
+        if not isinstance(src, dict):
+            continue
+        kind = src.get("kind") or ""
+        url = src.get("url")
+        external = bool(url) and kind != "flag" and str(url).startswith(("http://", "https://"))
+        location_parts = []
+        if src.get("sheet"):
+            location_parts.append(f"лист „{src['sheet']}“")
+        if src.get("row"):
+            location_parts.append(f"ред {src['row']}")
+        fields = []
+        for fld in src.get("fields") or []:
+            if not isinstance(fld, dict):
+                continue
+            raw_text, numeric = _fmt_source_value(fld)
+            value_eur = fld.get("value_eur")
+            fields.append(
+                {
+                    "name": fld.get("label") or fld.get("name") or "",
+                    "key": fld.get("name") if fld.get("label") else None,
+                    "raw": raw_text,
+                    "numeric": numeric,
+                    "eur": (
+                        f"{_fmt_amount(float(value_eur))} €"
+                        if isinstance(value_eur, (int, float)) and not isinstance(value_eur, bool)
+                        else ""
+                    ),
+                    "is_bgn": fld.get("currency") == "BGN",
+                }
+            )
+        views.append(
+            {
+                "kind": kind,
+                "kind_label": _SOURCE_KIND_LABELS.get(kind, ""),
+                "label": src.get("label") or _SOURCE_KIND_LABELS.get(kind, "Източник"),
+                "href": external_href(url) if external else (url or ""),
+                "external": external,
+                "file": src.get("file"),
+                "location": ", ".join(location_parts),
+                "fields": fields,
+                "has_eur": any(f["eur"] for f in fields),
+                "all_numeric": bool(fields) and all(f["numeric"] for f in fields),
+                "note": src.get("note"),
+                "rule": src.get("rule"),
+            }
+        )
+    return views
+
+
+def _sources_how_to(sources: list[dict[str, Any]]) -> str:
+    """The one-sentence "Как да проверите" for this flag's kinds of source."""
+    kinds = {s["kind"] for s in sources}
+    if "budget_file" in kinds:
+        return (
+            "отворете файла от връзката, намерете посочения лист и ред (или наименованието на "
+            "обекта) и сравнете числата с тези в таблицата."
+        )
+    if kinds & {"eop_contract", "eop_tender", "sigma"}:
+        return (
+            "отворете записа от връзката (поръчката в ЦАИС ЕОП или CSV файла на SIGMA), намерете "
+            "посочените полета и сравнете стойностите с тези в таблицата."
+        )
+    if "reports_page" in kinds:
+        return (
+            "отворете архива с отчети на сайта на общината и потърсете файла за посочения период."
+        )
+    return "отворете свързаните сигнали и проверете техните източници."
 
 
 def _zdoi_template(
@@ -1266,8 +1414,9 @@ METHODOLOGY_RULES: list[dict[str, Any]] = [
         "tier": "signal",
         "detects": "Планът за капиталов обект скача рязко спрямо предходния месец, или нов обект се "
         "появява „посред година“ с голям начален план.",
-        "threshold": "Над 50% и над 100,000 € ръст спрямо предходния месец; нов обект с начален план "
-        "над 250,000 €.",
+        "threshold": "Над 50% и над 100,000 € ръст спрямо предходния месец в същата година; нов "
+        "обект с начален план над 250,000 €, който липсва в първия наличен отчет за годината. "
+        "Декември не се сравнява със следващата година — тя има нов годишен бюджет.",
         "law_ref": "чл. 124, ал. 2 ЗПФ (промените по общинския бюджет се одобряват от общинския "
         "съвет); чл. 22, ал. 2 ЗМСМА (разгласяване на решенията в 7-дневен срок).",
         "documents": [
@@ -1482,6 +1631,14 @@ def _flag_view(
     first_seen_at = getattr(flag, "first_seen_at", None) or flag.created_at
     last_seen_at = getattr(flag, "last_seen_at", None) or flag.created_at
 
+    sources_raw = getattr(flag, "sources_json", None)
+    if isinstance(sources_raw, str):
+        try:
+            sources_raw = json.loads(sources_raw)
+        except ValueError:
+            sources_raw = None
+    sources = _source_views(sources_raw)
+
     return {
         "id": flag.id,
         "rule": flag.rule,
@@ -1506,6 +1663,10 @@ def _flag_view(
         "last_seen_at": last_seen_at,
         "permalink_href": f"../flags/{flag.id}.html",
         "zdoi_template": _zdoi_template(rule_label, flag.message, subject_line, documents),
+        "sources": sources,
+        "sources_raw": sources_raw if isinstance(sources_raw, list) else [],
+        "sources_has_bgn": any(fld["is_bgn"] for src in sources for fld in src["fields"]),
+        "sources_how_to": _sources_how_to(sources) if sources else "",
     }
 
 
@@ -1543,6 +1704,7 @@ def _make_env() -> Environment:
     env.globals["tier_tooltips"] = TIER_TOOLTIPS
     env.globals["repo_url"] = REPO_URL
     env.globals["rule_labels"] = RULE_LABELS
+    env.globals["sources_bgn_note"] = SOURCES_BGN_NOTE
     return env
 
 
@@ -1655,6 +1817,7 @@ def _export_flags(flags: list[dict[str, Any]], data_dir: Path) -> None:
             "law_ref": f["law_ref"],
             "documents": f["documents"],
             "details": f["details"],
+            "sources": f["sources_raw"],
             "subject_type": f["subject_type"],
             "subject_href": f["subject_href"],
             "subject_label": f["subject_label"],

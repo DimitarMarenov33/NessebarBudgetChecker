@@ -23,6 +23,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from nessebar_budget.analysis.provenance import budget_object_source, contract_sources
 from nessebar_budget.analysis.rules._common import (
     TIER_OPACITY,
     _clean_html,
@@ -46,6 +47,19 @@ _PRICE_UNVERIFIABLE_TYPES = (2, 3)
 #: § 52 "Придобиване на дълготрайни активи" -- the only paragraph Scope B of
 #: `missing_quantity` looks at.
 _MISSING_QUANTITY_BUDGET_PARAGRAPH = "5200"
+
+#: Provenance: the published fields a citizen compares -- title/subject,
+#: value, type, and the (absent or quantity-less) description.
+_QUANTITY_CONTRACT_FIELDS = (
+    "ContractNumber",
+    "TenderNumber",
+    "ContractSubject",
+    "ContractValue",
+    "Currency",
+    "TypeOfContract",
+    "SupplierName",
+)
+_QUANTITY_TENDER_FIELDS = ("TenderName", "TenderDescription")
 
 #: A number immediately followed by a unit of count/volume/area/weight, e.g.
 #: "20 броя", "15 бр.", "2 000 т", "500 кв.м", optionally with a spelled-out
@@ -240,6 +254,11 @@ def price_unverifiable_flags(
                 },
                 law_ref=thresholds.price_unverifiable_law_ref,
                 procurement_id=record.get("id"),
+                sources=contract_sources(
+                    record,
+                    contract_fields=_QUANTITY_CONTRACT_FIELDS,
+                    tender_fields=_QUANTITY_TENDER_FIELDS,
+                ),
             )
         )
     return out
@@ -309,6 +328,11 @@ def _missing_quantity_contract_flags(
                 },
                 law_ref=thresholds.missing_quantity_law_ref,
                 procurement_id=record.get("id"),
+                sources=contract_sources(
+                    record,
+                    contract_fields=_QUANTITY_CONTRACT_FIELDS,
+                    tender_fields=_QUANTITY_TENDER_FIELDS,
+                ),
             )
         )
     return out
@@ -372,6 +396,7 @@ def _missing_quantity_budget_flags(
                     "min_value_eur": round(min_value, 2),
                 },
                 law_ref=thresholds.missing_quantity_budget_law_ref,
+                sources=[budget_object_source(obj, ("plan_current", "spent_period"))],
             )
         )
     return out

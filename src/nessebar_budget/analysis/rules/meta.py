@@ -17,40 +17,51 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Any
 
+from nessebar_budget.analysis.provenance import flag_source
 from nessebar_budget.analysis.rules._common import TIER_SIGNAL, _short_title, eur, make_flag
 from nessebar_budget.analysis.rules.linking import DatasetIndex
 
 META_RULES = frozenset({"eu_funded_irregularity"})
 
 
-def _flagged_contracts(flags: list[dict[str, Any]]) -> dict[str, set[str]]:
-    """contract subject id -> names of the rules that flagged it (directly, or
-    as a member of a group flag such as `splitting`)."""
-    out: dict[str, set[str]] = defaultdict(set)
+def _flagged_contracts(flags: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    """contract subject id -> the flags that flagged it (directly, or as a
+    member of a group flag such as `splitting`)."""
+    out: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for flag in flags:
         if flag["rule"] in META_RULES:
             continue
         if flag.get("subject_type") == "contract" and flag.get("subject_id"):
-            out[flag["subject_id"]].add(flag["rule"])
+            out[flag["subject_id"]].append(flag)
         for member in (flag.get("details_json") or {}).get("member_ids") or []:
-            out[member].add(flag["rule"])
+            out[member].append(flag)
     return out
 
 
 def eu_funded_irregularity_flags(
     flags: list[dict[str, Any]], index: DatasetIndex
 ) -> list[dict[str, Any]]:
+    """Sources: the underlying flags (kind "flag"; the engine fills in their
+    permalinks) plus where the EU funding is read from -- SIGMA `eu_funded`,
+    EOP `IsEUFinanced`, or the matching notice wording."""
     flagged = _flagged_contracts(flags)
-    merged: dict[str, set[str]] = defaultdict(set)
-    for subject_id, rules in flagged.items():
-        merged[index.canonical(subject_id)] |= rules
+    merged: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for subject_id, hits in flagged.items():
+        merged[index.canonical(subject_id)] += hits
 
     out: list[dict[str, Any]] = []
-    for subject_id, rules in sorted(merged.items()):
+    for subject_id, hits in sorted(merged.items()):
         record = index.by_subject.get(subject_id)
         if record is None or not index.is_eu_funded(record):
             continue
-        rule_list = sorted(rules)
+        rule_list = sorted({h["rule"] for h in hits})
+        underlying: dict[tuple[str, str], dict[str, Any]] = {}
+        for hit in hits:
+            underlying.setdefault((hit["rule"], hit["subject_key"]), hit)
+        sources = [
+            flag_source(rule, key, _short_title(hit.get("message"), 140))
+            for (rule, key), hit in sorted(underlying.items())
+        ] + index.eu_sources(record)
         title = _short_title(record.get("title"))
         value = record.get("contract_value_eur")
         value_part = f" ({eur(value)})" if value else ""
@@ -90,6 +101,7 @@ def eu_funded_irregularity_flags(
                     "пред управляващия орган и OLAF"
                 ),
                 procurement_id=record.get("id"),
+                sources=sources,
             )
         )
     return out

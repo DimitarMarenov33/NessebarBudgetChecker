@@ -99,6 +99,7 @@
             </dl>
           </div>
           {% endif %}
+          {{ m.sources_box(f, root) }}
           <p class="more">
             {% if f.subject_href %}<a class="row-link" href="{{ root ~ (f.subject_href | sitepath) }}">{{ f.subject_label }}</a> ·
             {% endif %}

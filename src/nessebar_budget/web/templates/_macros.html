@@ -64,6 +64,59 @@
 </li>
 {%- endmacro %}
 
+{# Small "opens another site" arrow, after external source links. #}
+{% macro ext_icon() -%}
+<svg class="source__ext" width="11" height="11" viewBox="0 0 12 12" aria-hidden="true"><path d="M4.5 2.5h5v5M9.25 2.75 3 9" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+{%- endmacro %}
+
+{# Provenance ("Източници") of one flag: a native <details>, closed by
+   default, listing every published file/record the flag's numbers come
+   from -- link, file name, "лист X, ред Y", the fields with their raw and
+   EUR values, a note -- then a one-sentence "Как да проверите".
+   `f` is a `_flag_view()` dict; renders nothing for a flag without sources. #}
+{% macro sources_box(f, root, summary="Източници") -%}
+{% if f.sources %}
+<details class="sources">
+  <summary class="sources__summary">{{ chevron() }}<span>{{ summary }}</span><span class="sources__count">{{ f.sources | length }}</span></summary>
+  <div class="sources__body">
+    {% if f.sources_has_bgn %}<p class="sources__fx">{{ sources_bgn_note }}</p>{% endif %}
+    <ol class="sources__list">
+      {% for s in f.sources %}
+      <li class="source">
+        <div class="source__head">
+          {% if s.href %}
+          <a class="source__link" href="{{ s.href if s.external else root ~ s.href }}"{% if s.external %} target="_blank" rel="noopener noreferrer"{% endif %}>{{ s.label }}{% if s.external %}{{ ext_icon() }}{% endif %}</a>
+          {% else %}
+          <span class="source__link source__link--plain">{{ s.label }}</span>
+          {% endif %}
+          {% if s.file %}<span class="source__file">{{ s.file }}</span>{% endif %}
+        </div>
+        {% if s.kind == "flag" and s.rule %}<p class="source__loc">Сигнал на този сайт: {{ rule_labels.get(s.rule, s.rule) }}</p>{% endif %}
+        {% if s.location %}<p class="source__loc">{{ s.location }}</p>{% endif %}
+        {% if s.fields %}
+        <table class="source__fields">
+          <thead><tr><th scope="col">Поле</th><th scope="col"{% if s.all_numeric %} class="num"{% endif %}>В източника</th>{% if s.has_eur %}<th scope="col" class="num">В евро</th>{% endif %}</tr></thead>
+          <tbody>
+            {% for fld in s.fields %}
+            <tr>
+              <td>{{ fld.name }}{% if fld.key %}<span class="source__key">{{ fld.key }}</span>{% endif %}</td>
+              <td{% if fld.numeric %} class="num"{% endif %}>{{ fld.raw }}</td>
+              {% if s.has_eur %}<td class="num">{{ fld.eur or "—" }}</td>{% endif %}
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% endif %}
+        {% if s.note %}<p class="source__note">{{ s.note }}</p>{% endif %}
+      </li>
+      {% endfor %}
+    </ol>
+    <p class="sources__how"><strong>Как да проверите:</strong> {{ f.sources_how_to }}</p>
+  </div>
+</details>
+{% endif %}
+{%- endmacro %}
+
 {# Tier as a subtle chip: coloured dot + text ("Нарушение"/"Сигнал"/
    "Непрозрачност"), with the tier's short legend text as a native tooltip. #}
 {% macro tier_chip(f) -%}

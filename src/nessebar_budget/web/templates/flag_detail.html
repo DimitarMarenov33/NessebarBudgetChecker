@@ -44,6 +44,14 @@
   </section>
   {% endif %}
 
+  {% if f.sources %}
+  <section class="block">
+    <h2 class="block__title">Източници</h2>
+    <p class="block__sub">Публикуваните файлове и записи, от които са взети числата в този сигнал.</p>
+    {{ m.sources_box(f, root, "Покажи файловете, редовете и полетата") }}
+  </section>
+  {% endif %}
+
   <section class="block">
     <h2 class="block__title">Свързано с</h2>
     {% if f.subject_href %}

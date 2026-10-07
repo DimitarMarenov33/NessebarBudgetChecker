@@ -127,6 +127,11 @@ class Flag(Base):
     details_json: Mapped[dict | None] = mapped_column(JSON, default=None)
     #: Citation of the legal article this flag is grounded in, if any.
     law_ref: Mapped[str | None] = mapped_column(Text, default=None)
+    #: Provenance ("Източници"): JSON list of the published files/records the
+    #: flag's numbers come from -- each {"kind", "label", "url", "file",
+    #: "sheet", "row", "period", "fields": [{"name", "value", "value_eur",
+    #: ...}], "note"}. Built by `analysis.provenance`; see docs/RULES.md.
+    sources_json: Mapped[list | None] = mapped_column(JSON, default=None)
 
     created_at: Mapped[dt.datetime] = mapped_column(
         DateTime, default=lambda: dt.datetime.now(dt.UTC)

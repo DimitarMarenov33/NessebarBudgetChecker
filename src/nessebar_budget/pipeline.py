@@ -37,24 +37,21 @@ from sqlalchemy import select
 
 from nessebar_budget.config import Settings, get_settings
 from nessebar_budget.db.budget_repo import (
-    upsert_budget_line_items,
+    PARSEABLE_KINDS,
+    parse_budget_reports,
     upsert_budget_report,
-    upsert_cash_execution_lines,
 )
-from nessebar_budget.db.models import BudgetReport, Flag
+from nessebar_budget.db.models import Flag
 from nessebar_budget.db.repo import upsert_procurements
 from nessebar_budget.db.session import get_session, init_db
-from nessebar_budget.parsers.budget_b1 import parse_budget_b1
-from nessebar_budget.parsers.budget_capital import parse_budget_capital
 from nessebar_budget.scrapers.eop import EopScraper
 from nessebar_budget.scrapers.nesebar_site import NesebarSiteScraper
 from nessebar_budget.scrapers.sigma import SigmaScraper
 
 logger = logging.getLogger(__name__)
 
-#: BudgetReport kinds that `parse-budget` knows how to parse (mirrors
-#: `cli.parse_budget_command`'s query).
-_PARSEABLE_KINDS = ["B1", "capital_xlsx"]
+#: BudgetReport kinds that `parse-budget` knows how to parse.
+_PARSEABLE_KINDS = list(PARSEABLE_KINDS)
 
 #: Ordered (name, function) pairs `run_weekly` executes. Built as a module
 #: constant of *names*, resolved to the current (possibly monkeypatched)
@@ -147,58 +144,13 @@ def _step_scrape_nesebar_site(settings: Settings) -> dict[str, Any]:
 
 
 def _step_parse_budget(settings: Settings) -> dict[str, Any]:
-    """Parse cached `BudgetReport` files into line items, mirroring
-    `cli.parse_budget_command` (minus its Rich-table/console output)."""
+    """Parse cached `BudgetReport` files into line items -- the same
+    `parse_budget_reports` that `cli.parse_budget_command` runs (period from
+    each file's own header, one file per family and period)."""
     with get_session() as session:
-        query = select(BudgetReport).where(BudgetReport.kind.in_(_PARSEABLE_KINDS))
-        reports = session.scalars(query).all()
-
-        files_parsed = 0
-        line_items = 0
-        cash_lines = 0
-        mismatches = 0
-        failures: list[str] = []
-
-        for report in reports:
-            if not report.file_path or not Path(report.file_path).exists():
-                failures.append(report.file_path or f"report #{report.id}")
-                continue
-            try:
-                if report.kind == "capital_xlsx":
-                    result = parse_budget_capital(report.file_path, period=report.period)
-                    inserted, updated = upsert_budget_line_items(
-                        session, report.id, result["rows"]
-                    )
-                    line_items += inserted + updated
-                    mismatches += len(result["mismatches"])
-                    report.parsed_json = {
-                        "row_count": len(result["rows"]),
-                        "mismatches": result["mismatches"],
-                    }
-                else:  # "B1"
-                    result = parse_budget_b1(report.file_path, period=report.period)
-                    inserted, updated = upsert_cash_execution_lines(
-                        session, report.id, result["rows"]
-                    )
-                    cash_lines += inserted + updated
-                    report.parsed_json = {
-                        "row_count": len(result["rows"]),
-                        "skipped": result["skipped"],
-                    }
-                files_parsed += 1
-            except Exception as exc:  # noqa: BLE001 -- keep parsing the remaining files
-                logger.warning("pipeline parse_budget: failed to parse %s: %s", report.file_path, exc)
-                failures.append(str(report.file_path))
-
+        summary = parse_budget_reports(session)
         session.commit()
-
-    return {
-        "files_parsed": files_parsed,
-        "line_items": line_items,
-        "cash_lines": cash_lines,
-        "mismatches": mismatches,
-        "failures": len(failures),
-    }
+    return summary.as_dict()
 
 
 def _step_analyze(settings: Settings) -> dict[str, Any]:

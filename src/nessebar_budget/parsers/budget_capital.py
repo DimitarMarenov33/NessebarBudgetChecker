@@ -56,12 +56,21 @@ rate on 2026-01-01). The workbook's own currency marker is used when present
 "EUR"; `extra_json` additionally records `original_currency`,
 `conversion_rate`, and (when a conversion actually happened) the
 the conversion rate under `extra_json["conversion_rate"]` (raw values are not duplicated).
+
+Provenance: every row's `extra_json` carries `source_sheet` (worksheet name)
+and `source_row` (1-based Excel row number) of the line it was read from.
+
+Period: `detect_period(path)` reads the period the workbook *covers* from its
+own "план/отчет за периода: YYYY <месец>" header cell. `parse-budget` uses
+that, not the month the file was published under on nesebar.bg (quarterly
+files and re-uploads are often posted under a later month's heading).
 """
 
 from __future__ import annotations
 
 import logging
 import re
+import unicodedata
 from pathlib import Path
 from typing import Any
 
@@ -354,7 +363,14 @@ def parse_sheet(ws, period: str, original_currency: str) -> list[dict[str, Any]]
         raw_plan_current = _num(ws.cell(row=r, column=cols["plan_current_col"]).value)
         raw_spent_period = _num(ws.cell(row=r, column=cols["spent_period_col"]).value)
 
-        extra: dict[str, Any] = {"row_type": row_type, "original_currency": original_currency}
+        extra: dict[str, Any] = {
+            "row_type": row_type,
+            "original_currency": original_currency,
+            # Provenance: where in the workbook this line came from (1-based
+            # Excel row), so a flag can point a reader at the exact cell.
+            "source_sheet": ws.title,
+            "source_row": r,
+        }
         if original_currency != "EUR":
             # Raw BGN figures are not stored: they equal the EUR value × rate.
             extra["conversion_rate"] = rate
@@ -502,9 +518,10 @@ def validate_function_subtotals(rows: list[dict[str, Any]]) -> list[str]:
 def parse_budget_capital(path: str | Path, period: str | None = None) -> dict[str, Any]:
     """Parse all sheets of a capital-expenditure workbook.
 
-    `period` overrides the period inferred from the workbook's own
-    "план/отчет за периода" header text when given (callers normally pass
-    the period already recorded for the source `BudgetReport`).
+    `period` overrides the period inferred from each sheet's own
+    "план/отчет за периода" header text when given (`parse-budget` passes
+    the workbook's `detect_period` result, or the scraper's guess when that
+    fails).
 
     Returns `{"rows": [...], "mismatches": [...], "unsupported": str | None}`.
     `unsupported` is set (and `rows`/`mismatches` are empty) when the
@@ -545,26 +562,102 @@ def parse_budget_capital(path: str | Path, period: str | None = None) -> dict[st
     return {"rows": rows, "mismatches": mismatches, "unsupported": unsupported}
 
 
-_PERIOD_RE = re.compile(r"(\d{4})\s*(Януари|Февруари|Март|Април|Май|Юни|Юли|Август|"
-                        r"Септември|Октомври|Ноември|Декември)", re.IGNORECASE)
 _BG_MONTHS = {
     "януари": 1, "февруари": 2, "март": 3, "април": 4, "май": 5, "юни": 6,
     "юли": 7, "август": 8, "септември": 9, "октомври": 10, "ноември": 11, "декември": 12,
 }
+_MONTH_ALT = "|".join(_BG_MONTHS)
+#: "2022 Юни" (the form every workbook seen so far uses) ...
+_YEAR_MONTH_RE = re.compile(rf"(?<!\d)(\d{{4}})\s*({_MONTH_ALT})(?![а-я])", re.IGNORECASE)
+#: ... or "Юни 2022", in case a future workbook flips the order.
+_MONTH_YEAR_RE = re.compile(rf"(?<![а-я])({_MONTH_ALT})\s*(\d{{4}})(?!\d)", re.IGNORECASE)
+_PERIOD_LABEL = "за периода"
+#: sheet that carries the municipality-wide header; checked first.
+_PRIMARY_SHEET = "Общо"
+
+
+def _period_from_text(value: Any) -> str | None:
+    """"план/отчет за периода:  2022 Юни" -> "2022-06" (case- and
+    whitespace-insensitive; year-month or month-year order)."""
+    if not isinstance(value, str):
+        return None
+    text = re.sub(r"\s+", " ", unicodedata.normalize("NFC", value)).strip()
+    m = _YEAR_MONTH_RE.search(text)
+    if m:
+        year, month = int(m.group(1)), _BG_MONTHS[m.group(2).casefold()]
+    else:
+        m = _MONTH_YEAR_RE.search(text)
+        if not m:
+            return None
+        year, month = int(m.group(2)), _BG_MONTHS[m.group(1).casefold()]
+    if not 1990 <= year <= 2100:
+        return None
+    return f"{year:04d}-{month:02d}"
+
+
+def _period_from_rows(rows: list[tuple[Any, ...]]) -> str | None:
+    """Find the report period in a sheet's first rows.
+
+    Preferred: the "план/отчет за периода: YYYY <месец>" cell (the label and
+    the period share one cell in every workbook seen, 2021-2026). If the
+    label cell holds no period, a date cell to its right on the same row is
+    used (the latest one -- the 2016 `kp01.01.16.xlsx` capital programme
+    writes "за периода: | от | 2016-01-01"). Last resort: any header cell
+    that reads like "YYYY <месец>".
+    """
+    for row in rows:
+        for idx, cell in enumerate(row):
+            if isinstance(cell, str) and _PERIOD_LABEL in _norm(cell):
+                found = _period_from_text(cell)
+                if found:
+                    return found
+                for right in row[idx + 1 :]:
+                    found = _period_from_text(right)
+                    if found:
+                        return found
+                dates = [c for c in row[idx + 1 :] if hasattr(c, "year") and hasattr(c, "month")]
+                if dates:
+                    latest = max(dates)
+                    return f"{latest.year:04d}-{latest.month:02d}"
+    for row in rows:
+        for cell in row:
+            found = _period_from_text(cell)
+            if found:
+                return found
+    return None
 
 
 def _infer_period(ws) -> str | None:
-    """Best-effort period inference from the "план/отчет за периода" header
-    cell (row 3, col C in the 2026 sample), e.g. "план/отчет за периода:
-    2026 Август" -> "2026-08".
+    """Period stated in one worksheet's own header (first 10 rows)."""
+    rows = list(ws.iter_rows(min_row=1, max_row=10, max_col=12, values_only=True))
+    return _period_from_rows(rows)
+
+
+def detect_period(path: str | Path) -> str | None:
+    """Return the period ("YYYY-MM") a capital-ledger workbook *covers*, as
+    stated in its own "план/отчет за периода: YYYY <месец>" header cell --
+    not the month it happened to be published under on nesebar.bg (a
+    quarterly file is often posted a month later, and re-uploads land under
+    yet another heading).
+
+    The "Общо" sheet is read first, then the others, stopping at the first
+    sheet whose header states a period. Returns `None` if the workbook can't
+    be opened or no sheet states one (e.g. a file that isn't this report).
     """
-    for row in ws.iter_rows(min_row=1, max_row=8, max_col=8, values_only=True):
-        for cell in row:
-            if not isinstance(cell, str):
-                continue
-            m = _PERIOD_RE.search(cell)
-            if m:
-                year = int(m.group(1))
-                month = _BG_MONTHS[m.group(2).lower()]
-                return f"{year:04d}-{month:02d}"
-    return None
+    try:
+        wb = openpyxl.load_workbook(Path(path), read_only=True, data_only=True)
+    except Exception as exc:  # noqa: BLE001 -- any unreadable file just has no period
+        logger.warning("budget_capital: could not open %s to detect its period: %s", path, exc)
+        return None
+    try:
+        names = list(wb.sheetnames)
+        if _PRIMARY_SHEET in names:
+            names.remove(_PRIMARY_SHEET)
+            names.insert(0, _PRIMARY_SHEET)
+        for name in names:
+            found = _infer_period(wb[name])
+            if found:
+                return found
+        return None
+    finally:
+        wb.close()

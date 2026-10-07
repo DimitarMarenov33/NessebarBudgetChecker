@@ -21,26 +21,38 @@ grouped under `<h4>` headings, almost all of the form:
     Отчети за касово изпълнение на бюджета към 31.08.2026 г.
     Тримесечен отчет за касово изпълнение на бюджета към 30.06.2026 г.
 
-Each heading states the report's as-of date — this is a far more reliable
-period signal than the filenames, and is what `NesebarSiteScraper` uses
-primarily (`period_source="heading"`, confidence "high"); filename-based
-inference (see below) is only a fallback for the rare link with no dated
-heading above it.
+Each heading states the date the files under it were **published for**, which
+is *not* always the period a file covers: until 2022 the quarterly `B3` set
+was posted under the *following* month's heading (`B3_2018_4` — Q4 2018 —
+under "към 31.01.2019"), and capital-ledger files are sometimes posted a
+month late or re-uploaded under a later heading (§6). `NesebarSiteScraper`
+still records the heading month (`period_source="heading"`) and names the
+cache folder `data/cache/nesebar_site/<year>/<month>/` after it, but this is
+only a first guess: `parse-budget` replaces it with the period stated in the
+file's own header and keeps the guess as `parsed_json["heading_period"]`
+(§6). Filename-based inference (see below) is only a fallback for the rare
+link with no dated heading above it.
 
 Within one heading's group there are normally 7 files for a given month:
 `B1_YYYY_M_5206.xls` + 5× `IB1_YYYY_M_5206_<SUFFIX>.xls` + one friendly-named
-capital-ledger `.xlsx`. March and June additionally carry a `B3`/`IB3_*`
-quarterly set alongside the monthly `B1`/`IB1_*` ones (quarter-end months);
-these are folded into the same `B1`/`IB1_*` kinds (see §2) since they share
-an identical schema — just a different reporting cadence.
+capital-ledger `.xlsx`. Quarter-end months additionally carry a `B3`/`IB3_*`
+quarterly set; since 2026-10 these have their own kinds `B3`/`IB3_<SUFFIX>`
+(they share the `B1` schema and parser, but must be told apart to avoid
+counting a quarter twice — §6).
 
 Filename-based classification/period heuristics (`classify_filename` in
 `scrapers/nesebar_site.py`):
-- `B1_YYYY_M_5206.xls` / `B3_YYYY_M_5206.xls` → kind `B1`, (year, month)
-  read straight out of the filename, confidence "high".
-- `IB1_YYYY_M_5206_{DES,DMP,K33,KSF,RA}.xls` (or `IB3_...`) → kind
-  `IB1_DES`/`IB1_DMP`/`IB1_K33`/`IB1_KSF`/`IB1_RA`, same extraction,
-  confidence "high".
+- `B1_YYYY_M_5206.xls` → kind `B1`, (year, month) read straight out of
+  the filename, confidence "high".
+- `B3_YYYY_Q_5206.xls` → kind `B3`; the third number is the **quarter**,
+  so the month is the quarter-end month (`B3_2019_1` → 2019-03,
+  `B3_2018_4` → 2018-12), confidence "high".
+- `IB1_YYYY_M_5206_{DES,DMP,K33,KSF,RA}.xls` / `IB3_YYYY_Q_5206_<SUFFIX>.xls`
+  → kind `IB1_<SUFFIX>` / `IB3_<SUFFIX>`, same extraction, confidence "high".
+- `Budget_*.xlsx`, `NaturiPokazateli_*.xlsx`, `kp*.xlsx` (annual budget
+  macro, natural indicators, the 2016 capital programme) → kind `other`.
+  They are still downloaded and catalogued (every `.xlsx` link is), but
+  never parsed.
 - Any other `.xlsx`: tried in order — (1) a Bulgarian month name
   (е.g. "Месечен отчет за 2026 Април 5206 Несебър.xlsx") plus a nearby
   4-digit year → "high"; (2) an English month name glued to a 2- or
@@ -88,17 +100,16 @@ sub-ledgers mirrored by the `IB1_*` siblings below, a functional/дейност
 breakdown) and does not parse them.
 
 **`B3` (quarterly)**: `B3_YYYY_Q_5206.xls` / `IB3_*` share the exact same
-`OTCHET` schema as `B1`/`IB1_*` (confirmed on real 2019-2021 and 2026
-files, not just the MinFin macro) — `classify_filename` already maps a
-`B3`/`IB3` filename to the same `kind` ("B1" / "IB1_<SUFFIX>") as its
-monthly sibling, so no special-casing was needed in either the scraper or
-`parse_budget_b1`; the same function parses both. The one thing that *does*
-differ is the header's "за периода от...до" date pair: `B1`'s covers one
-month, but `B3`'s "от" is always 1 January of that year (quarterly reports
-are year-to-date cumulative) and "до" is the quarter-end month -- so
-`_infer_period`'s fallback (used only when no `period` is passed in) picks
-the *later* of the two dates, not the first one found; naively using "от"
-would misreport every `B3` as January.
+`OTCHET` schema as `B1`/`IB1_*` (confirmed on real 2019-2026 files, not
+just the MinFin macro), so `parse_budget_b1` parses both with no
+special-casing; they are classified as their own kinds (`B3`,
+`IB3_<SUFFIX>`) only so a quarter's `B3` and the same month's `B1` can be
+de-duplicated (§6). The header's "за периода от...до" date pair: **both**
+`B1` and `B3` are year-to-date cumulative — "от" is always 1 January (e.g.
+`B1_2026_8`: 2026-01-01 → 2026-08-31) — and "до" is the last day of the
+month/quarter covered. `detect_period` therefore reads the date under the
+"до" label (falling back to the *latest* date on the header row); naively
+using the first date found would report every file as January.
 
 **Quirk found in the live August 2026 `B1` file**: the per-параграф
 "Уточнен план Общо" column (col 4) is 0 for *every* row in both the revenue
@@ -243,8 +254,8 @@ leva, every report from 2026-01 on is denominated in euro. Both parsers
    - **Fallback** (no marker found): period `< "2026-01"` → BGN, else EUR.
      (Both parsers log a warning and default to BGN if *neither* a marker
      nor a period is available at all — shouldn't happen in practice, since
-     `cli.py` always passes the `BudgetReport.period` recorded by the
-     scraper.)
+     `parse-budget` always passes the period detected from the file's own
+     header, or the scraper's guess when detection fails.)
 2. **Convert every monetary value to EUR at parse time**, rounded to 2
    decimal places, at the fixed rate above. `currency` is always stored as
    `"EUR"` on the row (so rules/site code need no currency-awareness
@@ -321,3 +332,95 @@ a `PRB` placeholder). Used only to confirm the `OTCHET` column layout above
 is the standard form, not a Nessebar-specific one; no macro file was found
 for the capital-expenditure ledger in §3 — the task's sample `.xlsx` is this
 project's only ground truth for that form.
+
+
+## 6. Period from content, one file per period (`parse-budget`)
+
+**The bug (fixed 2026-10-07).** Until then every file got the month of the
+nesebar.bg heading it was published under. Quarterly and re-uploaded files
+therefore landed on the wrong month, and several periods held two files of
+the same family (counted twice): 31 cash periods had two reports (e.g.
+2019-01 held `B1_2019_1` *and* `B3_2018_4` — Q4 2018), 7 capital periods
+had two files (2022-07: "Месечен … 2022 Юли" + "Тримесечен … 2022 Юни";
+2022-04: the March and April files; 2023-03: "…Март….xlsx" + a "(1)"
+re-upload; 2021-07: `razhodi72021.xlsx` + `kr_2021_2_5206.xlsx`, which is
+June), and Dec 2021 / Dec 2022 capital data sat under 2022-01 / 2023-01.
+Five spreadsheets under the 2024-02 heading (`Budget_2018/2019/2020_5206`,
+`NaturiPokazateli_2019_5206`, `kp01.01.16`) were treated as capital ledgers
+and parsed to 0 rows.
+
+**Period detection** (`detect_period(path) -> "YYYY-MM" | None` in both
+parsers):
+- capital ledger: the "план/отчет за периода:  2022 Юни" cell (sheet "Общо"
+  first; case-, whitespace- and order-insensitive Bulgarian month name;
+  a date to the right of the label as a fallback).
+- B1/B3: the OTCHET header's "до" date (e.g. 2019-03-31 for `B3_2019_1`).
+
+All 123 cached B1/B3 files and 65 of 69 capital-candidate `.xlsx` files
+state their period; the four with none (`Budget_*`, `NaturiPokazateli_*`) fall back to the
+scraper's guess. Detection changed the period of 25 reports: the 17
+pre-2023 `B3` files, 7 capital files, and `kp01.01.16.xlsx` (2016-12).
+`BudgetReport.period` and every parsed row get the detected period;
+`parsed_json` records `period_source` ("content" / "scraper"),
+`heading_period` (the scraper's guess) and `detected_period`. A later
+re-scrape (`upsert_budget_report`) only refreshes `heading_period`; it
+does not undo a period or an `other` kind that came from the file's content.
+
+**One file per (family, period).** Families: cash = `B1` + `B3`, capital =
+`capital_xlsx`. When several files map to one period, only the preferred
+one is parsed; the rest get `parsed_json["skipped"] = {"duplicate_of": <id>,
+"duplicate_file": …, "reason": …}` and their rows are deleted. Preference
+(`db/budget_repo.preference_key`):
+- cash: the quarterly `B3` over the monthly `B1` (see the check below);
+- capital: a monthly-named file ("Месечен", "otchet", "m-otchet",
+  "mesechen", "ot4et") over an unmarked one over a quarterly-named one
+  ("Тримесечен", "3mese…"); then the original over a "(1)" re-upload; then
+  the newest file (mtime); then the newest report row.
+
+A `capital_xlsx` whose content has no "Сметна стойност" header (or no
+"ОБЩО" row) becomes kind `other` after the parse attempt, with the reason in
+`parsed_json["other_reason"]`, and the next file in its period is tried.
+
+**B1 vs B3 for the same quarter: not identical, so the B3 wins.** Both files
+were parsed for all 30 quarter-end months that have both (2019-03 …
+2026-06). For 2022-06 every line is identical. For 2022-03 the
+expenditure and revenue totals are identical (5,624,016.91 € / 5,367,291.12 €)
+but 16 sub-paragraph lines differ (amounts moved between §§). Over all 30:
+the expenditure total is identical in 14 quarters, within ~1 € (1-2 BGN
+rounding) in 8, and different in 8 (B3 minus B1: 2023-06 −217,841 €;
+2022-09 +30,006 €; 2023-12 −10,248 €; 2023-03 −2,990 €; 2025-03 −614 €;
+2023-09 +392 €; 2021-12 +343 €; 2026-06 −13 €). The revenue total differs
+in 4 quarters (up to +116,527 € in 2023-12), adjusted-plan lines differ in
+12, and every line matches in only 10 quarters. The B3 is the quarterly report the municipality
+submits to the Ministry of Finance, and it carries end-of-quarter corrections
+that the monthly B1 doesn't, so it is the one parsed. The B1 stays
+catalogued (and still counts as "published" for `missing_monthly_report`).
+
+**Cleanup and `--rebuild`.** Before upserting, `parse-budget` deletes the rows
+of skipped and `other` reports, a parsed report's rows under its old period,
+rows at a parsed (family, period) that belong to any other report, and rows
+whose report is no longer a parseable kind; a second run changes nothing.
+`parse-budget --rebuild` deletes every line item and re-parses everything
+from the cache (≈40 s for the 192 parseable files). Every row's
+`extra_json` also carries `source_sheet` and `source_row` (1-based Excel
+row) for provenance.
+
+**Coverage after the 2026-10-07 rebuild** (151 files parsed: 93 cash, 58
+capital; 36 duplicates skipped: 30 cash, 6 capital; 5 `other`):
+
+| year | capital periods | cash periods |
+|---|---|---|
+| 2018 | 0 | 1 (2018-12, `B3_2018_4`) |
+| 2019 | 0 | 12 |
+| 2020 | 0 | 12 |
+| 2021 | 11 (02-12) | 12 |
+| 2022 | 11 | 12 |
+| 2023 | 8 | 12 |
+| 2024 | 10 | 12 |
+| 2025 | 11 | 12 |
+| 2026 | 7 (02-08) | 8 |
+
+No cash month is missing from 2019-01 to 2026-08. Capital months missing
+from 2021-02 to 2026-08: 2022-01, 2023-01, 2023-02, 2023-06, 2023-12,
+2024-01, 2024-02, 2025-01, 2026-01. Before the fix, 2022-01 and 2023-01
+looked covered, but those files held December data.

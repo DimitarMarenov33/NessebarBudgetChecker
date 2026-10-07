@@ -471,3 +471,52 @@ def test_upsert_combines_eop_and_sigma_records_without_collision(
 
     total = db_session.scalar(select(func.count()).select_from(Procurement))
     assert total == len(eop_records) + len(sigma_records)
+
+
+# -- nesebar_site: kinds and downloads -----------------------------------------
+
+_NESEBAR_REPORTS_HTML = """
+<html><body>
+<h4>Отчети за касово изпълнение на бюджета към 31.01.2019 г.</h4>
+<a href="/03-2019/B1_2019_1_5206.xls">B1</a>
+<a href="/03-2019/B3_2018_4_5206.xls">B3</a>
+<a href="/03-2019/IB3_2018_4_5206_DES.xls">IB3</a>
+<h4>Отчети за касово изпълнение на бюджета към 29.02.2024 г.</h4>
+<a href="/03-2019/Budget_2018_5206.xlsx">annual budget</a>
+<a href="/03-2019/feb2024.xlsx">capital ledger</a>
+<a href="/03-2019/regUV2019.pdf">scan</a>
+</body></html>
+"""
+
+
+def test_nesebar_site_classifies_b3_and_non_ledger_but_downloads_them(tmp_path) -> None:
+    from nessebar_budget.scrapers.nesebar_site import NesebarSiteScraper
+
+    requested: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requested.append(request.url.path)
+        if request.url.path.endswith("reports.html"):
+            return httpx.Response(200, text=_NESEBAR_REPORTS_HTML)
+        return httpx.Response(200, content=b"file-bytes")
+
+    scraper = NesebarSiteScraper(
+        cache_dir=tmp_path, delay=0.0, client=httpx.Client(transport=httpx.MockTransport(handler))
+    )
+    try:
+        records = {r["file_path"].rsplit("/", 1)[-1]: r for r in scraper.run()}
+    finally:
+        scraper.close()
+
+    assert records["B3_2018_4_5206.xls"]["kind"] == "B3"
+    assert records["IB3_2018_4_5206_DES.xls"]["kind"] == "IB3_DES"
+    assert records["B1_2019_1_5206.xls"]["kind"] == "B1"
+    assert records["feb2024.xlsx"]["kind"] == "capital_xlsx"
+    # Non-ledger spreadsheet: "other", but still fetched and catalogued.
+    assert records["Budget_2018_5206.xlsx"]["kind"] == "other"
+    assert (tmp_path / "2024" / "02" / "Budget_2018_5206.xlsx").exists()
+    # Period at download time stays the heading month (only a guess now).
+    assert records["B3_2018_4_5206.xls"]["period"] == "2019-01"
+    # PDFs are still not downloaded.
+    assert "regUV2019.pdf" not in records
+    assert not any(path.endswith(".pdf") for path in requested)

@@ -20,7 +20,21 @@ from pathlib import Path
 
 import openpyxl
 import pytest
+import xlrd
+from sqlalchemy import create_engine, select
+from sqlalchemy.orm import Session
 
+import nessebar_budget.db.budget_models  # noqa: F401 -- registers the line-item tables
+from nessebar_budget.db.budget_models import BudgetLineItem, CashExecutionLine
+from nessebar_budget.db.budget_repo import (
+    ReportCandidate,
+    group_candidates,
+    parse_budget_reports,
+    preference_key,
+    upsert_budget_report,
+)
+from nessebar_budget.db.models import Base
+from nessebar_budget.parsers import budget_b1, budget_capital
 from nessebar_budget.parsers.budget_b1 import BGN_PER_EUR as B1_BGN_PER_EUR
 from nessebar_budget.parsers.budget_b1 import parse_budget_b1
 from nessebar_budget.parsers.budget_capital import BGN_PER_EUR as CAPITAL_BGN_PER_EUR
@@ -345,15 +359,46 @@ def test_b3_quarterly_bgn_currency_detected(b3_result_2019_bgn):
     assert expenditure[0]["extra_json"]["original_currency"] == "BGN"
 
 
-def test_classify_filename_b3_maps_to_b1_kind():
-    """B3/IB3 (quarterly) filenames share B1/IB1's schema and are classified
-    into the same `kind` so they're routed through the same parser."""
+def test_classify_filename_b3_is_its_own_kind():
+    """B3/IB3 (quarterly) files share B1/IB1's schema (same parser) but are
+    their own kinds, so a B3 and the same quarter-end month's B1 can be told
+    apart and de-duplicated. The B3's third number is the quarter, so the
+    filename month is the quarter-end month."""
     info = classify_filename("B3_2019_1_5206.xls")
-    assert info["kind"] == "B1"
-    assert (info["year"], info["month"]) == (2019, 1)
+    assert info["kind"] == "B3"
+    assert (info["year"], info["month"], info["quarter"]) == (2019, 3, 1)
+
+    info = classify_filename("B3_2018_4_5206.xls")
+    assert (info["kind"], info["year"], info["month"]) == ("B3", 2018, 12)
 
     info = classify_filename("IB3_2019_1_5206_K33.xls")
-    assert info["kind"] == "IB1_K33"
+    assert info["kind"] == "IB3_K33"
+
+    assert classify_filename("B1_2019_1_5206.xls")["kind"] == "B1"
+    assert classify_filename("IB1_2019_1_5206_DES.xls")["kind"] == "IB1_DES"
+
+
+@pytest.mark.parametrize(
+    "filename",
+    [
+        "Budget_2018_5206.xlsx",
+        "Budget_2020_5206.xlsx",
+        "NaturiPokazateli_2019_5206.xlsx",
+        "kp01.01.16.xlsx",
+    ],
+)
+def test_classify_filename_non_ledger_xlsx_is_other(filename):
+    assert classify_filename(filename)["kind"] == "other"
+
+
+def test_non_ledger_xlsx_still_downloaded():
+    """Reclassifying them as "other" must not stop them being fetched."""
+    from nessebar_budget.scrapers.nesebar_site import _should_download
+
+    assert _should_download({"kind": "other", "filename": "Budget_2018_5206.xlsx"})
+    assert _should_download({"kind": "B3", "filename": "B3_2019_1_5206.xls"})
+    assert _should_download({"kind": "IB3_RA", "filename": "IB3_2019_1_5206_RA.xls"})
+    assert not _should_download({"kind": "other", "filename": "regUV2019.pdf"})
 
 
 # -- filename classification (unchanged behaviour) ----------------------------
@@ -379,3 +424,276 @@ def test_classify_filename(filename, expected_kind, expected_year, expected_mont
 def test_classify_filename_unknown_falls_back_to_other():
     info = classify_filename("regUV2019.pdf")
     assert info["kind"] == "other"
+
+
+# -- period from the file's own header (not the nesebar.bg heading month) -----
+
+
+@pytest.mark.parametrize(
+    ("path", "expected"),
+    [
+        (CAPITAL_XLSX, "2026-08"),
+        (CAPITAL_XLSX_2021_BGN, "2021-02"),
+    ],
+)
+def test_capital_detect_period(path, expected):
+    assert budget_capital.detect_period(path) == expected
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("план/отчет за периода:  2022 Юни", "2022-06"),
+        ("ПЛАН/ОТЧЕТ ЗА ПЕРИОДА:2023   септември", "2023-09"),
+        ("план/отчет\nза периода: 2024 МАЙ", "2024-05"),
+        ("за периода: Декември 2021", "2021-12"),
+        ("план/отчет за периода:", None),
+        ("2022 Юнии", None),
+    ],
+)
+def test_capital_period_text_variants(text, expected):
+    assert budget_capital._period_from_text(text) == expected
+
+
+def test_capital_detect_period_none_for_non_ledger(tmp_path):
+    path = tmp_path / "Budget_2018_5206.xlsx"
+    wb = openpyxl.Workbook()
+    wb.active.title = "BUDGET"
+    wb.active["A1"] = "ОТЧЕТНИ ДАННИ"
+    wb.save(path)
+    assert budget_capital.detect_period(path) is None
+
+
+@pytest.mark.parametrize(
+    ("path", "expected"),
+    [
+        # Q1 2019: "от" 2019-01-01, "до" 2019-03-31 -> the quarter-end month.
+        (B3_XLS_2019_BGN, "2019-03"),
+        (B1_XLS_2020_BGN, "2020-01"),
+        (B1_XLS, "2026-08"),
+    ],
+)
+def test_cash_detect_period_uses_do_date(path, expected):
+    assert budget_b1.detect_period(path) == expected
+
+
+# -- provenance: every parsed row points at its sheet and Excel row ----------
+
+
+@pytest.mark.parametrize("path", [CAPITAL_XLSX, CAPITAL_XLSX_2021_BGN])
+def test_capital_rows_carry_source_sheet_and_row(path, capital_result, capital_result_2021_bgn):
+    result = capital_result if path == CAPITAL_XLSX else capital_result_2021_bgn
+    rows = result["rows"]
+    assert rows
+    assert all("source_sheet" in r["extra_json"] and "source_row" in r["extra_json"] for r in rows)
+    wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
+    try:
+        obj = next(r for r in rows if r["extra_json"]["row_type"] == "object")
+        ws = wb[obj["extra_json"]["source_sheet"]]
+        cells = next(
+            ws.iter_rows(
+                min_row=obj["extra_json"]["source_row"],
+                max_row=obj["extra_json"]["source_row"],
+                max_col=2,
+                values_only=True,
+            )
+        )
+        assert str(cells[0]).strip() == obj["object_code"]
+        assert str(cells[1]).strip() == obj["object_name"]
+    finally:
+        wb.close()
+
+
+@pytest.mark.parametrize("path", [B1_XLS, B1_XLS_2020_BGN, B3_XLS_2019_BGN])
+def test_cash_rows_carry_source_sheet_and_row(path):
+    rows = parse_budget_b1(path)["rows"]
+    assert rows
+    assert all(r["extra_json"]["source_sheet"] == "OTCHET" for r in rows)
+    assert all(isinstance(r["extra_json"]["source_row"], int) for r in rows)
+    sheet = xlrd.open_workbook(path).sheet_by_name("OTCHET")
+    for row in rows[:20]:
+        excel_row = row["extra_json"]["source_row"]
+        names = {str(sheet.cell_value(excel_row - 1, col)).strip() for col in (2, 3)}
+        assert row["name"] in names
+
+
+# -- one file per (family, period): preference order --------------------------
+
+
+def _cand(report_id, kind, name, period="2022-06", mtime=0.0):
+    return ReportCandidate(
+        report_id=report_id, kind=kind, file_path=f"/cache/2022/07/{name}", period=period, mtime=mtime
+    )
+
+
+def test_capital_preference_monthly_over_quarterly_over_copies_over_mtime():
+    monthly_copy = _cand(1, "capital_xlsx", "Месечен отчет за 2022 Юни 5206 Несебър(1).xlsx")
+    quarterly = _cand(2, "capital_xlsx", "Тримесечен отчет за 2022 Юни 5206 Несебър.xlsx")
+    quarterly_latin = _cand(3, "capital_xlsx", "3mesechen-mart.xlsx")
+    neutral = _cand(4, "capital_xlsx", "42022.xlsx")
+    otchet = _cand(5, "capital_xlsx", "otchet2022dec5206.xlsx")
+    m_otchet_old = _cand(6, "capital_xlsx", "m-otchet-aug.xlsx", mtime=100.0)
+    m_otchet_new = _cand(7, "capital_xlsx", "m-otchet-5206.xlsx", mtime=200.0)
+
+    ranked = sorted(
+        [quarterly, quarterly_latin, neutral, monthly_copy, otchet, m_otchet_old, m_otchet_new],
+        key=preference_key,
+    )
+    ids = [c.report_id for c in ranked]
+    # monthly-named, original before "(1)", newest mtime first
+    assert ids[:4] == [7, 6, 5, 1]
+    # then unmarked, then quarterly-named ("Тримесечен" must not count as monthly)
+    assert ids[4] == 4
+    assert set(ids[5:]) == {2, 3}
+
+
+def test_capital_preference_original_over_reupload_copy():
+    original = _cand(1, "capital_xlsx", "Месечен отчет за 2023 Март 5206 Несебър.xlsx", mtime=1.0)
+    copy = _cand(2, "capital_xlsx", "Месечен отчет за 2023 Март 5206 Несебър(1).xlsx", mtime=9.0)
+    spaced = _cand(3, "capital_xlsx", "Месечен отчет за 2022 Август 5206 Несебър (1).xlsx")
+    assert min([copy, spaced, original], key=preference_key) is original
+
+
+def test_cash_preference_b3_over_b1_and_grouping():
+    b1 = _cand(10, "B1", "B1_2022_6_5206.xls", period="2022-06", mtime=50.0)
+    b3 = _cand(11, "B3", "B3_2022_2_5206.xls", period="2022-06", mtime=1.0)
+    other_month = _cand(12, "B1", "B1_2022_7_5206.xls", period="2022-07")
+    capital = _cand(13, "capital_xlsx", "Месечен отчет за 2022 Юни 5206 Несебър.xlsx")
+    no_period = _cand(14, "B1", "B1_x.xls", period=None)
+    not_parseable = _cand(15, "IB3_DES", "IB3_2022_2_5206_DES.xls")
+
+    groups = group_candidates([b1, b3, other_month, capital, no_period, not_parseable])
+    assert [c.report_id for c in groups[("cash", "2022-06")]] == [11, 10]
+    assert [c.report_id for c in groups[("cash", "2022-07")]] == [12]
+    assert [c.report_id for c in groups[("capital", "2022-06")]] == [13]
+    assert [c.report_id for c in groups[("cash", "?14")]] == [14]
+    assert all(15 not in [c.report_id for c in g] for g in groups.values())
+
+
+# -- parse_budget_reports: periods, dedupe, cleanup, provenance (temp DB) -----
+
+
+@pytest.fixture
+def budget_db(tmp_path):
+    """Temp DB with cached-report rows as the old scraper left them: periods
+    = nesebar.bg heading month, B3 files catalogued as kind "B1"."""
+    import shutil
+
+    cache = tmp_path / "cache"
+    cache.mkdir()
+
+    def copy(src: Path, name: str) -> str:
+        dest = cache / name
+        shutil.copy(src, dest)
+        return str(dest)
+
+    non_ledger = cache / "Budget_2018_5206.xlsx"
+    wb = openpyxl.Workbook()
+    wb.active.title = "BUDGET"
+    wb.active["A1"] = "ОТЧЕТНИ ДАННИ ПО ЕБК"
+    wb.save(non_ledger)
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'test.db'}")
+    Base.metadata.create_all(engine)
+    session = Session(engine)
+    specs = [
+        # (kind, heading period, file)
+        ("B1", "2019-04", copy(B3_XLS_2019_BGN, "B3_2019_1_5206.xls")),  # legacy kind
+        ("B1", "2019-03", copy(B3_XLS_2019_BGN, "B1_2019_3_5206.xls")),  # same period
+        ("B1", "2020-01", copy(B1_XLS_2020_BGN, "B1_2020_1_5206.xls")),
+        ("IB1_K33", "2019-04", copy(B3_XLS_2019_BGN, "IB3_2019_1_5206_K33.xls")),
+        ("capital_xlsx", "2021-03", copy(CAPITAL_XLSX_2021_BGN, "Отчет за 2021 Февруари.xlsx")),
+        ("capital_xlsx", "2021-02", copy(CAPITAL_XLSX_2021_BGN, "Отчет за 2021 Февруари(1).xlsx")),
+        ("capital_xlsx", "2024-02", str(non_ledger)),
+    ]
+    reports = []
+    for kind, period, path in specs:
+        report = upsert_budget_report(
+            session,
+            {
+                "url": f"https://www.nesebar.bg/03-2019/{Path(path).name}",
+                "kind": kind,
+                "period": period,
+                "file_path": path,
+                "parsed_json": {"period_source": "heading"},
+            },
+        )
+        reports.append(report)
+    # A stale row left by the old heading-based parse of the duplicate B1.
+    session.add(CashExecutionLine(report_id=reports[1].id, period="2019-03", section="разходи"))
+    session.commit()
+    yield session, reports
+    session.close()
+
+
+def test_parse_budget_reports_periods_dedupe_and_cleanup(budget_db):
+    session, reports = budget_db
+    b3, b1_dup, b1_2020, ib3, cap, cap_copy, non_ledger = reports
+    urls = {r.id: (r.url, r.file_path) for r in reports}
+
+    summary = parse_budget_reports(session)
+    session.commit()
+
+    # Kinds: B3/IB3 refined from the legacy B1/IB1 kinds.
+    assert b3.kind == "B3"
+    assert ib3.kind == "IB3_K33"
+
+    # Period from content; heading guess kept.
+    assert b3.period == "2019-03"
+    assert b3.parsed_json["period_source"] == "content"
+    assert b3.parsed_json["heading_period"] == "2019-04"
+    assert cap.period == "2021-02"
+    assert cap.parsed_json["heading_period"] == "2021-03"
+
+    # One file per family and period: B3 kept over B1, original over "(1)".
+    assert b1_dup.parsed_json["skipped"]["duplicate_of"] == b3.id
+    assert cap_copy.parsed_json["skipped"]["duplicate_of"] == cap.id
+    assert summary.skipped_duplicates == 2
+
+    # Non-ledger xlsx: parse attempted, reclassified, reason kept.
+    assert non_ledger.kind == "other"
+    assert "Сметна стойност" in non_ledger.parsed_json["other_reason"]
+
+    # Rows only for the chosen files, at the detected period; stale row gone.
+    cash = session.scalars(select(CashExecutionLine)).all()
+    assert {r.report_id for r in cash} == {b3.id, b1_2020.id}
+    assert {r.period for r in cash if r.report_id == b3.id} == {"2019-03"}
+    capital = session.scalars(select(BudgetLineItem)).all()
+    assert {r.report_id for r in capital} == {cap.id}
+    assert {r.period for r in capital} == {"2021-02"}
+
+    # Provenance on every stored row; url/file_path untouched.
+    assert all(r.extra_json["source_sheet"] and r.extra_json["source_row"] for r in cash + capital)
+    assert {r.id: (r.url, r.file_path) for r in reports} == urls
+
+    # Idempotent: a second run changes nothing; --rebuild gives the same rows.
+    counts = (len(cash), len(capital))
+    again = parse_budget_reports(session)
+    session.commit()
+    assert again.rows_deleted == 0 and again.periods_changed == 0
+    rebuilt = parse_budget_reports(session, rebuild=True)
+    session.commit()
+    assert rebuilt.files_parsed == summary.files_parsed == 3
+    assert (
+        len(session.scalars(select(CashExecutionLine)).all()),
+        len(session.scalars(select(BudgetLineItem)).all()),
+    ) == counts
+
+
+def test_rescrape_keeps_content_period(budget_db):
+    """A later scrape upsert (heading period, filename kind) must not move a
+    file back to its heading month or undo a content-based "other"."""
+    session, reports = budget_db
+    parse_budget_reports(session)
+    b3, non_ledger = reports[0], reports[6]
+    upsert_budget_report(
+        session,
+        {"url": b3.url, "kind": "B3", "period": "2019-04", "parsed_json": {"heading": "x"}},
+    )
+    upsert_budget_report(
+        session,
+        {"url": non_ledger.url, "kind": "capital_xlsx", "period": "2024-02", "parsed_json": {}},
+    )
+    assert (b3.period, b3.kind, b3.parsed_json["heading_period"]) == ("2019-03", "B3", "2019-04")
+    assert b3.parsed_json["row_count"] > 0
+    assert non_ledger.kind == "other"

@@ -10,7 +10,10 @@ The flag contract (see `db.models.Flag` and `docs/RULES.md`):
 - `explanation`: 2-4 plain Bulgarian sentences for citizens -- what we see,
   why it may point to misconduct, what would make it innocent;
 - `documents_json`: Bulgarian names of the documents to request under ЗДОИ;
-- `law_ref`: the verified citation (see `analysis/thresholds.py`).
+- `law_ref`: the verified citation (see `analysis/thresholds.py`);
+- `sources`: provenance -- which published files/records, sheets, rows and
+  fields produced the numbers (see `analysis/provenance.py`); persisted as
+  `Flag.sources_json` and shown on the site as the "Източници" box.
 """
 
 from __future__ import annotations
@@ -161,6 +164,7 @@ def make_flag(
     law_ref: str | None,
     procurement_id: int | None = None,
     subject_key: str | None = None,
+    sources: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Build a flag dict honoring the shared Flag contract (see module docstring)."""
     if tier not in TIERS:  # pragma: no cover - programming error guard
@@ -178,6 +182,7 @@ def make_flag(
         "details_json": details,
         "law_ref": law_ref,
         "procurement_id": procurement_id,
+        "sources": [src for src in (sources or []) if src],
     }
 
 
