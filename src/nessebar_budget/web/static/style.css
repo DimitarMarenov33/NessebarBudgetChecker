@@ -1320,3 +1320,23 @@ a.issue:hover .issue__chev { color: var(--text); }
   .nav, .footer, .toolbar, .hero::before { display: none; }
   body { background: #fff; color: #000; }
 }
+
+/* beta label next to the wordmark */
+.beta-pill {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 7px;
+  border: 1px solid var(--accent, #5e6ad2);
+  border-radius: 999px;
+  color: var(--accent, #5e6ad2);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  line-height: 16px;
+  vertical-align: middle;
+}
+@media (max-width: 640px) {
+  .wordmark__muted { display: none; }
+  .beta-pill { margin-left: 6px; }
+}

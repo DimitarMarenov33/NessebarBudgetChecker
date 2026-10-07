@@ -29,6 +29,7 @@
     <a class="wordmark" href="{{ root }}index.html" aria-label="Бюджетен монитор Несебър — начало">
       <svg class="wordmark__mark" width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><rect x="0.75" y="0.75" width="18.5" height="18.5" rx="5" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="5" y="10" width="2.25" height="5" rx="1" fill="currentColor"/><rect x="8.875" y="7" width="2.25" height="8" rx="1" fill="currentColor"/><rect x="12.75" y="4.5" width="2.25" height="10.5" rx="1" fill="currentColor"/></svg>
       <span class="wordmark__text">Бюджетен монитор <span class="wordmark__muted">Несебър</span></span>
+      <span class="beta-pill" title="Проектът е в тестов период">бета</span>
     </a>
     <nav class="nav__links" aria-label="Основна навигация">
       {% for key, href, label in nav_items %}
@@ -74,6 +75,7 @@
           <li><a href="{{ root }}methodology.html">Методология</a></li>
           <li><a href="{{ root }}data/index.html">Отворени данни</a></li>
           <li><a href="{{ repo_url }}" rel="noopener">Код в GitHub <span aria-hidden="true">↗</span></a></li>
+          <li><a href="{{ repo_url }}/issues/new" rel="noopener">Обратна връзка <span aria-hidden="true">↗</span></a></li>
         </ul>
       </div>
     </div>
