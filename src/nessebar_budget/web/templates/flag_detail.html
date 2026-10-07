@@ -37,8 +37,8 @@
   <section class="block">
     <h2 class="block__title">Числа</h2>
     <dl class="flagrow__numbers">
-      {% for label, value in f.detail_items %}
-      <div><dt>{{ label }}</dt><dd>{{ value }}</dd></div>
+      {% for key, label, value in f.detail_items %}
+      <div><dt>{% if key == 'paragraph' %}<abbr title="категория (§), не редът на обекта">{{ label }}</abbr>{% else %}{{ label }}{% endif %}</dt><dd>{{ value }}</dd></div>
       {% endfor %}
     </dl>
   </section>
@@ -59,7 +59,8 @@
     {% else %}
     <p class="muted">Няма пряка връзка към конкретна поръчка/обект.</p>
     {% endif %}
-    <p class="footnote">Първо засечен на <strong>{{ f.first_seen_at | bgdate }}</strong> · последно потвърден на
+    <p class="footnote">{% if f.event_year %}Година на възникване: <strong>{{ f.event_year }}</strong> ·
+    {% endif %}Първо засечен на <strong>{{ f.first_seen_at | bgdate }}</strong> · последно потвърден на
     <strong>{{ f.last_seen_at | bgdate }}</strong>.</p>
   </section>
 

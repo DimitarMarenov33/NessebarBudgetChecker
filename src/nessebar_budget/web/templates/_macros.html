@@ -91,6 +91,7 @@
           {% endif %}
           {% if s.file %}<span class="source__file">{{ s.file }}</span>{% endif %}
         </div>
+        {% if s.object_name %}<p class="source__objname">Обект: <strong>{{ s.object_name }}</strong> — търсете този ред по името на обекта (ред {{ s.row }}), не по параграфа.</p>{% endif %}
         {% if s.kind == "flag" and s.rule %}<p class="source__loc">Сигнал на този сайт: {{ rule_labels.get(s.rule, s.rule) }}</p>{% endif %}
         {% if s.location %}<p class="source__loc">{{ s.location }}</p>{% endif %}
         {% if s.fields %}
@@ -111,7 +112,16 @@
       </li>
       {% endfor %}
     </ol>
-    <p class="sources__how"><strong>Как да проверите:</strong> {{ f.sources_how_to }}</p>
+    <div class="sources__how">
+      <strong>Как да проверите:</strong>
+      {% if f.sources_how_to_steps | length > 1 %}
+      <ol class="sources__how-steps">
+        {% for step in f.sources_how_to_steps %}<li>{{ step }}</li>{% endfor %}
+      </ol>
+      {% else %}
+      {{ f.sources_how_to_steps[0] }}
+      {% endif %}
+    </div>
   </div>
 </details>
 {% endif %}

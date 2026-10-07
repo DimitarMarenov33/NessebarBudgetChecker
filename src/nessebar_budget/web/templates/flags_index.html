@@ -62,17 +62,29 @@
           {% endfor %}
         </select>
       </label>
+      <label class="select">
+        <span class="visually-hidden">Година на възникване</span>
+        <select class="input" data-table-filter="year" aria-label="Филтър по година на възникване">
+          <option value="">Всички години</option>
+          {% for year in flags | map(attribute='event_year') | reject('none') | unique | sort(reverse=true) %}
+          <option value="{{ year }}">{{ year }}</option>
+          {% endfor %}
+        </select>
+      </label>
       {{ m.count(flags | length) }}
     </div>
 
     <div class="flaglist">
       {% for f in flags %}
-      <details class="flagrow" id="{{ f.id }}" data-flag-row data-tier="{{ f.tier_key }}" data-severity="{{ f.severity | sevkey }}" data-rule="{{ f.rule }}">
+      <details class="flagrow" id="{{ f.id }}" data-flag-row data-tier="{{ f.tier_key }}" data-severity="{{ f.severity | sevkey }}" data-rule="{{ f.rule }}" data-year="{{ f.event_year or '' }}">
         <summary class="issue flagrow__summary">
           <span class="issue__sev">{{ m.sev_dot(f.severity) }}</span>
           <span class="issue__rule"><span class="issue__chips">{{ m.chip(f.tier_label, f.tier_key) }}<span class="chip">{{ f.rule_label }}</span></span></span>
           <span class="issue__msg">{{ f.message }}</span>
-          <time class="issue__date">{{ f.created_at | bgdate }}</time>
+          <time class="issue__date"{% if f.event_year %} title="Година на възникване: {{ f.event_year }} · засечено на {{ f.created_at | bgdate }}"{% else %} title="Засечено на {{ f.created_at | bgdate }}"{% endif %}>
+            {% if f.event_year %}<span class="issue__date-year">{{ f.event_year }}</span>{% endif %}
+            <span class="issue__date-seen">{{ f.created_at | bgdate }}</span>
+          </time>
           <span class="issue__chev">{{ m.chevron() }}</span>
         </summary>
         <div class="flagrow__panel">
@@ -93,8 +105,8 @@
           <div>
             <span class="eyebrow">Числа</span>
             <dl class="flagrow__numbers">
-              {% for label, value in f.detail_items %}
-              <div><dt>{{ label }}</dt><dd>{{ value }}</dd></div>
+              {% for key, label, value in f.detail_items %}
+              <div><dt>{% if key == 'paragraph' %}<abbr title="категория (§), не редът на обекта">{{ label }}</abbr>{% else %}{{ label }}{% endif %}</dt><dd>{{ value }}</dd></div>
               {% endfor %}
             </dl>
           </div>

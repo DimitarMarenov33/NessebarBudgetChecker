@@ -41,7 +41,7 @@ For CI/CD (GitHub Actions building and deploying this to Pages), see
 | `budget/index.html` | Latest-month capital ledger (consolidated `Общо` unit): plan vs. spent by function, month-over-month plan changes (new/increased objects), full object table. |
 | `budget/<period>.html` | Same breakdown for one historical month (e.g. `budget/2026-08.html`). |
 | `cash/index.html` | Cash execution (B1) YTD by expenditure paragraph, biggest categories, optional Minfin quarterly comparison (Nessebar vs. median of all municipalities) when the quarterly workbook parses cleanly. |
-| `flags/index.html` | All flags: a tier filter (segmented control: Всички / Нарушения / Сигнали / Непрозрачност) alongside severity/rule filters and search, tier+severity+rule chips per row, counts per tier and per severity. Each row is a native `<details>`/`<summary>` — no JS needed to expand it — revealing the explanation, legal basis, documents to request (ЗДОИ), and a small numbers list parsed out of `details_json` (never the raw JSON), then a closed-by-default "Източници" box (see "Provenance box" below). Renders an empty state gracefully if no flags exist yet. |
+| `flags/index.html` | All flags: a tier filter (segmented control: Всички / Нарушения / Сигнали / Непрозрачност) alongside severity/rule/**година** filters and search (all combine), tier+severity+rule chips per row, counts per tier and per severity. The row's date shows both the event year and the detection date (see "Event year" below) — a small bold year above the muted detection date, right-aligned next to the chips. Each row is a native `<details>`/`<summary>` — no JS needed to expand it — revealing the explanation, legal basis, documents to request (ЗДОИ), and a small numbers list parsed out of `details_json` (never the raw JSON), then a closed-by-default "Източници" box (see "Provenance box" below). Renders an empty state gracefully if no flags exist yet. |
 | `flags/<id>.html` | One permalink page per flag: title = rule label, tier + severity chips, message, explanation, legal basis, documents list, numbers, an "Източници" section (collapsible, closed by default), subject link, first/last-seen dates, a 3-step "Как да поискате документите" box, and a "Копирай текст за заявление" `<details>` with a static, pre-filled plain-text ЗДОИ request template (copy button via `static/app.js`). Linked from every flag row and from Telegram deep links `flags/#<id>` (the bare numeric `id` is the row's anchor on the index page too). |
 | `methodology.html` | Sources, update cadence, the eop/SIGMA dedupe heuristic, a "За какви нарушения следим" section (what misconduct the three tiers cover, in plain Bulgarian, incl. which Наказателен кодекс offences a *signal* may relate to once documents confirm it), a data-driven "Правила за сигнали" section (one entry per rule — label, tier, what it detects, thresholds, legal basis, suggested documents — built from `build.py`'s `METHODOLOGY_RULES`, content sourced from `docs/RULES.md`), "Какво можете да направите" (the ЗДОИ route and which bodies to signal — АДФИ, АОП, Сметна палата, managing authority/OLAF, prosecution only with evidence), and the "flags are not proof of wrongdoing" disclaimer. |
 | `data/index.html` | Links to every export below, plus a summary of current counts. |
@@ -53,7 +53,7 @@ For CI/CD (GitHub Actions building and deploying this to Pages), see
 | `contracts.csv` / `contracts.json` | One row per distinct `eop` procurement (514 at last build), with SIGMA enrichment columns (`bids_received`, `sigma_source_id`, `sigma_unp`, `sigma_eu_funded`) when a match was found. |
 | `budget_line_items.csv` | Every `budget_line_items` row, all months and units (not just the consolidated `Общо` one shown in the HTML pages), with `row_type` (`object` / `paragraph_subtotal` / `function_subtotal` / `grand_total`) pulled out of `extra_json`. |
 | `cash_execution.csv` | Every `cash_execution_lines` row, all months, both `приходи`/`разходи` sections. |
-| `flags.json` | All flags: `tier`, `tier_label`, `severity`, `message`, `explanation`, `documents` (list), `law_ref`, `details`, `sources` (the raw `sources_json` provenance list, see docs/RULES.md), `subject_href`/`subject_label`, `permalink`, and the usual timestamps — whatever optional columns the live `flags` table currently has, see "Flag schema" below. |
+| `flags.json` | All flags: `tier`, `tier_label`, `severity`, `message`, `explanation`, `documents` (list), `law_ref`, `details`, `event_year` (int or null, see "Event year" below), `sources` (the raw `sources_json` provenance list, see docs/RULES.md), `subject_href`/`subject_label`, `permalink`, and the usual timestamps — whatever optional columns the live `flags` table currently has, see "Flag schema" below. |
 | `meta.json` | Build timestamp, headline counts, and the SIGMA-match statistics also quoted in `methodology.html`. |
 
 ## Dedupe & enrichment: ЦАИС ЕОП + SIGMA
@@ -122,6 +122,37 @@ whatever is missing:
 - **`sources_json`** missing/empty: the "Източници" box is simply not
   rendered (every flag gets sources on the next `analyze`).
 
+### Event year ("година на възникване")
+
+`_event_year()` in `build.py` resolves, for every flag, the year the
+underlying *event* happened — as opposed to `created_at`/`first_seen_at`
+(when our scraper/analyzer *detected* it), which is what the row used to
+show alone:
+
+- **budget-object flags**: the ledger period in `details_json` — `period`
+  (most rules), `to_period` (plan_jump's later side) or
+  `first_period`/`from_period` (plan_jump's "new object" case) — whichever
+  key that rule populated, "YYYY-MM" -> its year;
+- **report flags** (`missing_monthly_report`/`missing_annual_report`):
+  `details_json.year` (annual) or `period`/`expected_period` (monthly);
+- **everything else** — contract/procedure/contractor-group flags,
+  including the `eu_funded_irregularity` meta-flag (it inherits its
+  subject contract's `procurement_id`) — the matched contract's own `year`
+  (same value `contracts/index.html` groups by: `contract_date`, falling
+  back to `published_at`). `None` when no contract resolves, e.g.
+  `contractor_concentration`, which spans many contracts and has no single
+  event date — such flags simply don't match any specific year in the
+  filter (they still show under "Всички години").
+
+`flags/index.html`'s "Година" `<select>` (`data-table-filter="year"`,
+options = distinct `event_year` values present, descending, plus "Всички
+години") combines with the existing search/tier/severity/rule filters the
+same way the severity/rule `<select>`s already do (a `data-year` attribute
+per row, matched by the generic filter in `app.js`). No `?year=` URL-param
+preselect yet — none of the existing filters support URL params either, so
+this was left for a later pass rather than added inconsistently for one
+filter only.
+
 ### Provenance box ("Източници")
 
 `_macros.html`'s `sources_box(f, root)` renders `_flag_view()`'s `sources`
@@ -130,15 +161,29 @@ whatever is missing:
 `flags/index.html` and on every `flags/<id>.html`. Per source: the label as
 a link to the original public URL (external arrow icon, `target="_blank"`;
 `external_href()` percent-encodes the Cyrillic/space file names), the file
-name in mono, "лист X, ред Y" when known, a compact Поле / В източника /
-В евро table (raw value as published -- leva for pre-2026 budget files --
-and the EUR value; API keys shown under their Bulgarian gloss), and the
+name in mono; for a `budget_file` source **with a known row**, a bold
+"Обект: **<name>** — търсете този ред по името на обекта (ред N), не по
+параграфа" line *before* the "лист X, ред Y" line (a beta tester opened the
+file, read the "5200 Придобиване на дълготрайни материални активи"
+*paragraph subtotal* row and saw different numbers — the flag's figures are
+on the *object* row, not that subtotal; `_flag_view()` attaches
+`source.object_name` from the flag's own `details_json.object_name` for
+exactly this case); then "лист X, ред Y" when known, a compact Поле /
+В източника / В евро table (raw value as published -- leva for pre-2026
+budget files -- and the EUR value; API keys shown under their Bulgarian
+gloss; a "Параграф" row in the *numbers* grid above this box carries a
+"категория (§), не редът на обекта" tooltip for the same reason), and the
 note. A `flag`-kind source links to that flag's permalink. If any value is
 in leva, one line says "Стойностите са публикувани в лева и са преобразувани
-по фиксирания курс 1 € = 1,95583 лв."; the box ends with a one-sentence
-"Как да проверите" chosen by source kind (file -> sheet/row; ЦАИС ЕОП/SIGMA
-record -> fields; report archive -> period). Not shown on the home page or
-contract/budget pages.
+по фиксирания курс 1 € = 1,95583 лв."; the box ends with "Как да проверите"
+as 2-3 short numbered steps from `_sources_how_to_steps()`, chosen by source
+kind: a budget file gets "отворете файла (Excel/LibreOffice)" / "Ctrl+F за
+името на обекта (или отидете на ред N)" / "сравнете тези три колони,
+стойностите тук са и в евро"; a ЦАИС ЕОП/SIGMA record gets "отворете
+поръчката/договора" / "потърсете тези полета" (named from the source's own
+field list) / "сравнете стойностите"; a report-archive source keeps a
+period-based 3-step version. Not shown on the home page or contract/budget
+pages.
 
 Every flag-rendering template (`flags_index.html`, `flag_detail.html`,
 `contract_detail.html`, `_budget_body.html`, the home page's `flag_row`

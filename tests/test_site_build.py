@@ -194,6 +194,32 @@ def test_flags_index_renders_tier_filter(built_site: Path) -> None:
 
 
 @requires_db
+def test_flags_index_renders_year_filter(built_site: Path) -> None:
+    """flags/index.html must offer a "Година" (event year) filter alongside
+    severity/rule, with options = distinct `event_year`s descending plus
+    "Всички години", and each row must carry a matching `data-year` so the
+    generic app.js filter (see `enableFlagFilters`) picks it up and combines
+    it with the other filters exactly like severity/rule already do."""
+    html = (built_site / "flags" / "index.html").read_text(encoding="utf-8")
+    assert 'data-table-filter="year"' in html
+    assert "Всички години" in html
+    assert 'data-year="' in html
+
+    option_years = [
+        int(y)
+        for y in re.findall(r'<option value="(\d{4})">\d{4}</option>', html)
+    ]
+    assert option_years, "no year <option>s rendered"
+    assert option_years == sorted(option_years, reverse=True), "years must be descending"
+
+    row_years = {
+        int(y) for y in re.findall(r'data-year="(\d{4})"', html)
+    }
+    assert row_years, "no row carried a non-empty data-year"
+    assert row_years == set(option_years), "select options must match the years actually on rows"
+
+
+@requires_db
 def test_flag_permalink_page_exists_for_a_flag_in_the_db(built_site: Path) -> None:
     """Every flag in the DB gets its own permalink page flags/<id>.html, and
     that page renders the explanation/documents/how-to-request sections."""
@@ -281,9 +307,29 @@ def test_flag_permalink_shows_sources_box(tmp_path: Path) -> None:
     assert "102,376 лв." in budget_html and "627,983 лв." in budget_html
     assert "1 € = 1,95583 лв." in budget_html
     assert "Как да проверите" in budget_html
+    # (a) object name bold, before the sheet/row line, with the row number --
+    # the beta-tester fix: the flag's numbers are on the *object* row, not
+    # the paragraph-subtotal row a reader would otherwise land on.
+    objname_pos = budget_html.find("source__objname")
+    loc_pos = budget_html.find("лист „Общо“, ред 19")
+    assert -1 < objname_pos < loc_pos
+    assert "Реконструкция на училище" in budget_html
+    assert "търсете този ред по името на обекта (ред 19)" in budget_html
+    # (b) the "Параграф" item in the numbers grid gets a short tooltip note.
+    assert 'title="категория (§), не редът на обекта"' in budget_html
+    # (c) "Как да проверите" is now 3 short numbered steps for a budget file.
+    assert "sources__how-steps" in budget_html
+    assert "Excel/LibreOffice" in budget_html
+    assert "Ctrl+F" in budget_html
+    assert "Усвоено към отчетния период" in budget_html
 
     contract_html = (site / "flags" / f"{flags['exceptional_procedure'].id}.html").read_text("utf-8")
     assert 'href="https://app.eop.bg/today/595341"' in contract_html
+    # Contract flags get ЦАИС ЕОП-flavoured steps instead of the budget ones.
+    assert "ЦАИС ЕОП" in contract_html
+    assert "sources__how-steps" in contract_html
+    assert "Ctrl+F" not in contract_html
+
     meta_html = (site / "flags" / f"{flags['eu_funded_irregularity'].id}.html").read_text("utf-8")
     assert f'href="../flags/{flags["exceptional_procedure"].id}.html"' in meta_html
 
@@ -292,6 +338,15 @@ def test_flag_permalink_shows_sources_box(tmp_path: Path) -> None:
 
     exported = json.loads((site / "data" / "flags.json").read_text("utf-8"))
     assert all(f["sources"] for f in exported)
+
+    # event_year: the budget object's own ledger period (2022-12 -> 2022),
+    # vs. the matched contract's year (contract_date 2025-01-01 -> 2025) for
+    # both a direct contract flag and the EU meta-flag over the same contract.
+    by_rule = {f["rule"]: f for f in exported}
+    assert "event_year" in by_rule["unplanned_spending"]
+    assert by_rule["unplanned_spending"]["event_year"] == 2022
+    assert by_rule["exceptional_procedure"]["event_year"] == 2025
+    assert by_rule["eu_funded_irregularity"]["event_year"] == 2025
 
 
 #: An amount grouped with spaces / thin spaces (the pre-redesign format),

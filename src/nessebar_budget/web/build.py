@@ -989,11 +989,14 @@ def _format_detail_value(key: str, value: Any) -> str | None:
     return str(value)
 
 
-def _detail_items(details: dict[str, Any] | None) -> list[tuple[str, str]]:
-    """`details_json` -> a small, human-labelled (label, value) list for a
-    definition list -- never the raw JSON blob. A value too structured to
+def _detail_items(details: dict[str, Any] | None) -> list[tuple[str, str, str]]:
+    """`details_json` -> a small, human-labelled (key, label, value) list for
+    a definition list -- never the raw JSON blob. A value too structured to
     render as one line (a nested list of records, a dict) is skipped rather
-    than dumped as raw JSON."""
+    than dumped as raw JSON. The raw `key` is kept alongside the Bulgarian
+    `label` so a template can single out a specific item (e.g. "paragraph",
+    to attach the "категория (§), не редът на обекта" tooltip -- see
+    docs/SITE.md's Provenance box section)."""
     if not isinstance(details, dict):
         return []
     items = []
@@ -1004,7 +1007,7 @@ def _detail_items(details: dict[str, Any] | None) -> list[tuple[str, str]]:
         if formatted is None:
             continue
         label = _DETAIL_LABELS.get(key, key.replace("_", " ").capitalize())
-        items.append((label, formatted))
+        items.append((key, label, formatted))
     return items
 
 
@@ -1147,6 +1150,7 @@ def _source_views(raw: Any) -> list[dict[str, Any]]:
                 "external": external,
                 "file": src.get("file"),
                 "location": ", ".join(location_parts),
+                "row": src.get("row"),
                 "fields": fields,
                 "has_eur": any(f["eur"] for f in fields),
                 "all_numeric": bool(fields) and all(f["numeric"] for f in fields),
@@ -1157,24 +1161,62 @@ def _source_views(raw: Any) -> list[dict[str, Any]]:
     return views
 
 
-def _sources_how_to(sources: list[dict[str, Any]]) -> str:
-    """The one-sentence "Как да проверите" for this flag's kinds of source."""
+def _sources_how_to_steps(
+    sources: list[dict[str, Any]], details: dict[str, Any] | None = None
+) -> list[str]:
+    """The "Как да проверите" box, as 2-3 short numbered steps tailored to
+    this flag's dominant source kind -- replaces the old one-sentence
+    version after a beta tester opened a budget file, went to the
+    "5200 Придобиване на дълготрайни материални активи" *paragraph subtotal*
+    row and saw different numbers than the flag's, because the flag's
+    figures are on the *object* row, not the paragraph subtotal above it.
+    The steps now say explicitly which row/field to look at and (for a
+    budget file) point at the object's own name, not the paragraph."""
     kinds = {s["kind"] for s in sources}
     if "budget_file" in kinds:
-        return (
-            "отворете файла от връзката, намерете посочения лист и ред (или наименованието на "
-            "обекта) и сравнете числата с тези в таблицата."
+        object_name = (details or {}).get("object_name") if isinstance(details, dict) else None
+        row = next(
+            (s["row"] for s in reversed(sources) if s.get("kind") == "budget_file" and s.get("row")),
+            None,
         )
+        find_step = "в лист „Общо“ натиснете Ctrl+F и потърсете "
+        find_step += f"името на обекта „{object_name}“" if object_name else "името на обекта"
+        if row:
+            find_step += f" (или отидете на ред {row})"
+        find_step += "."
+        return [
+            "отворете файла от връзката (Excel/LibreOffice).",
+            find_step,
+            (
+                "сравнете колоните „Сметна стойност“, „Уточнен план“ и „Усвоено към отчетния "
+                "период“ с таблицата тук — стойностите във файла са в лева, тук са и в евро."
+            ),
+        ]
     if kinds & {"eop_contract", "eop_tender", "sigma"}:
-        return (
-            "отворете записа от връзката (поръчката в ЦАИС ЕОП или CSV файла на SIGMA), намерете "
-            "посочените полета и сравнете стойностите с тези в таблицата."
-        )
+        field_names: list[str] = []
+        for s in sources:
+            if s.get("kind") not in {"eop_contract", "eop_tender", "sigma"}:
+                continue
+            for fld in s.get("fields") or []:
+                name = fld.get("name")
+                if name and name not in field_names:
+                    field_names.append(name)
+        fields_text = ", ".join(f"„{n}“" for n in field_names[:4]) or "посочените по-долу полета"
+        return [
+            "отворете поръчката/договора от връзката по-горе в ЦАИС ЕОП (или CSV файла на SIGMA).",
+            f"потърсете полетата {fields_text} в записа.",
+            "сравнете стойностите с тези в таблицата тук.",
+        ]
     if "reports_page" in kinds:
-        return (
-            "отворете архива с отчети на сайта на общината и потърсете файла за посочения период."
-        )
-    return "отворете свързаните сигнали и проверете техните източници."
+        return [
+            "отворете архива с отчети на сайта на общината (връзката по-горе).",
+            "потърсете файла за посочения период.",
+            (
+                "ако липсва — това е самият сигнал: не открихме отчет, публикуван там, където го "
+                "търсихме."
+            ),
+        ]
+    return ["отворете свързаните сигнали и проверете техните източници."]
 
 
 def _zdoi_template(
@@ -1559,6 +1601,60 @@ for _item in METHODOLOGY_RULES:
 del _item
 
 
+def _event_year(
+    subject_type: str | None,
+    details: dict[str, Any] | None,
+    contract: ContractView | None,
+) -> int | None:
+    """The year the flagged *event* happened ("година на възникване"), as
+    opposed to `created_at`/`first_seen_at` (when *we* detected it):
+
+    - budget-object flags: the ledger period recorded in `details_json` --
+      `period` (most rules), `to_period` (plan_jump, the jump's later side)
+      or `first_period`/`from_period` (plan_jump's "new object" case) --
+      whichever key that rule populated, "YYYY-MM" -> its year;
+    - report flags (missing_monthly_report/missing_annual_report):
+      `details_json.year` (annual) or `period`/`expected_period` (monthly);
+    - everything else -- contract/procedure/contractor-group flags,
+      including the `eu_funded_irregularity` meta-flag, which all carry a
+      `procurement_id` -- the matched contract's own `year` (same value
+      `contracts/index.html` groups by: `contract_date`, falling back to
+      `published_at`). None when no contract resolves (e.g.
+      `contractor_concentration`, which spans many contracts and has no
+      single event date).
+    """
+    if subject_type == "budget_object" and isinstance(details, dict):
+        period = (
+            details.get("period")
+            or details.get("to_period")
+            or details.get("first_period")
+            or details.get("from_period")
+        )
+        if period and len(str(period)) >= 4:
+            try:
+                return int(str(period)[:4])
+            except ValueError:
+                return None
+        return None
+    if subject_type == "report" and isinstance(details, dict):
+        year = details.get("year")
+        if year is not None:
+            try:
+                return int(year)
+            except (TypeError, ValueError):
+                pass
+        period = details.get("period") or details.get("expected_period")
+        if period and len(str(period)) >= 4:
+            try:
+                return int(str(period)[:4])
+            except ValueError:
+                return None
+        return None
+    if contract is not None:
+        return contract.year
+    return None
+
+
 def _flag_view(
     flag: Any,
     contract_by_proc_id: dict[int, ContractView],
@@ -1638,6 +1734,17 @@ def _flag_view(
         except ValueError:
             sources_raw = None
     sources = _source_views(sources_raw)
+    if subject_type == "budget_object" and isinstance(details, dict) and details.get("object_name"):
+        # So the "Източници" box can show the object's own name in bold,
+        # above the sheet/row line, for a citizen to Ctrl+F for -- the row
+        # itself may be the *paragraph subtotal* a reader would otherwise
+        # land on by scrolling, not the object's own row.
+        obj_name = details["object_name"]
+        for src in sources:
+            if src.get("kind") == "budget_file" and src.get("row"):
+                src["object_name"] = obj_name
+
+    event_year = _event_year(subject_type, details, contract)
 
     return {
         "id": flag.id,
@@ -1661,12 +1768,13 @@ def _flag_view(
         "created_at": flag.created_at,
         "first_seen_at": first_seen_at,
         "last_seen_at": last_seen_at,
+        "event_year": event_year,
         "permalink_href": f"../flags/{flag.id}.html",
         "zdoi_template": _zdoi_template(rule_label, flag.message, subject_line, documents),
         "sources": sources,
         "sources_raw": sources_raw if isinstance(sources_raw, list) else [],
         "sources_has_bgn": any(fld["is_bgn"] for src in sources for fld in src["fields"]),
-        "sources_how_to": _sources_how_to(sources) if sources else "",
+        "sources_how_to_steps": _sources_how_to_steps(sources, details) if sources else [],
     }
 
 
@@ -1817,6 +1925,7 @@ def _export_flags(flags: list[dict[str, Any]], data_dir: Path) -> None:
             "law_ref": f["law_ref"],
             "documents": f["documents"],
             "details": f["details"],
+            "event_year": f["event_year"],
             "sources": f["sources_raw"],
             "subject_type": f["subject_type"],
             "subject_href": f["subject_href"],
