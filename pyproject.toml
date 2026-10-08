@@ -8,7 +8,10 @@ version = "0.1.0"
 description = "Local, offline civic budget-monitoring app for Nessebar Municipality"
 readme = "README.md"
 requires-python = ">=3.12"
-license = { text = "MIT" }
+license = { text = "EUPL-1.2" }
+classifiers = [
+    "License :: OSI Approved :: European Union Public Licence 1.2 (EUPL 1.2)",
+]
 dependencies = [
     "scrapling",
     "playwright",

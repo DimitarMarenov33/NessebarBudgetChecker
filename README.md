@@ -228,6 +228,21 @@ multi-year framework contract, a redacted classified amount, etc.). Always
 verify against the original source document (linked from every flagged
 record) before drawing any conclusion.
 
+## License
+
+The source code is licensed under the **European Union Public Licence
+v. 1.2 (EUPL-1.2)**; the full text is in [`LICENSE`](LICENSE). Copyright ©
+2026 the Nessebar Budget Monitor contributors. In short: anyone may use,
+study, change and share the code, and anyone who distributes a changed
+version, or runs it as a service for others, must publish their changes
+under the same licence. The EUPL has official, equally valid texts in all
+EU languages, including Bulgarian:
+https://interoperable-europe.ec.europa.eu/collection/eupl/eupl-text-eupl-12
+
+Data from the sources listed above keeps its own terms (for example the
+Trade Register's open data is CC0 and SIGMA's data is CC BY); the map
+tiles are © OpenStreetMap contributors.
+
 ## Local-only data handling
 
 - No telemetry or analytics of any kind.
