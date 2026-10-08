@@ -21,6 +21,43 @@ anomalies with a small rule engine, publishes the result as a static
 website, and can optionally notify a Telegram chat. It does **not** accuse
 anyone of wrongdoing — see the [Disclaimer](#disclaimer) below.
 
+## How this project is built (AI disclosure)
+
+**The running system uses no AI.** Every number, signal and text on the
+site comes from deterministic code. Scrapers download the official files,
+parsers read them row by row, fixed rules with published thresholds decide
+what becomes a signal, and the explanations are pre-written templates
+filled in with figures from the data. No language model, neural network or
+machine-learning model is called at any step, and the same input always
+produces the same output.
+
+**The source code was written with AI assistance.** Most of the code, tests
+and documentation in this repository were generated with Claude Code,
+Anthropic's AI coding assistant, working under the direction of the
+maintainer. The maintainer set the goals and requirements, chose the data
+sources, made the design and legal decisions (a lawyer reviewed the legal
+wording), and reviewed the results. Beta testers check published signals
+against the original source files. AI assistance is still used, and
+commits do not always say so, so treat any commit as possibly AI-assisted.
+
+**Correctness does not rest on trusting the AI.** An automated test suite
+checks the parsers and rules, including against real source files. Every
+signal on the site lists the exact file, sheet, row and field its numbers
+come from, so anyone can check it by hand. Legal citations are quoted from
+the law texts stored in `docs/law/`.
+
+**Contributing with AI tools.** AI-assisted contributions are welcome if
+you understand and can explain what you submit, you have checked that it
+may be published under this project's licence, and you say in the pull
+request which tool you used and for what.
+
+**На български.** Работещата система не използва изкуствен интелект:
+числата и сигналите се изчисляват с фиксирани, публични правила върху
+официални данни. Програмният код е писан с помощта на Claude Code (ИИ
+асистент за програмиране) под ръководството на поддържащия проекта, който
+определя целите, източниците и правните решения и проверява резултатите.
+Всеки сигнал посочва файла, листа и реда, от които идват числата му.
+
 ## Architecture
 
 ```
