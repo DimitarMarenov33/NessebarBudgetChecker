@@ -146,7 +146,9 @@ def _step_scrape_registry(settings: Settings) -> dict[str, Any]:
     with get_session() as session:
         eiks = distinct_contractor_eiks(session)
 
-    scraper = RegistryScraper(delay=2.0)
+    # 2 s between requests drew ~30 HTTP 429s per run (2026-10-08 CI run);
+    # 4 s keeps the ~160 lookups to ~11 minutes without the retry waits.
+    scraper = RegistryScraper(delay=4.0)
     try:
         records = scraper.fetch(eiks)
     finally:

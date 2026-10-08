@@ -38,19 +38,38 @@ def _now() -> dt.datetime:
     return dt.datetime.now(dt.UTC).replace(tzinfo=None)
 
 
+#: Keys in ЦАИС ЕОП payloads that the service regenerates on every fetch
+#: without the contract changing (observed 2026-10-08: `ContractReportId`
+#: differed for 412 of 514 contracts between two runs a day apart). They
+#: are still stored, but a difference in them alone is not a "change".
+_VOLATILE_RAW_KEYS = frozenset({"ContractReportId"})
+
+
+def _strip_volatile(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {k: _strip_volatile(v) for k, v in value.items() if k not in _VOLATILE_RAW_KEYS}
+    if isinstance(value, list):
+        return [_strip_volatile(v) for v in value]
+    return value
+
+
 def _unchanged(old_value: Any, new_value: Any) -> bool:
     """True if `old_value` (read back from the DB) already equals `new_value`.
 
-    Numeric(16, 2) columns come back from SQLAlchemy as `decimal.Decimal`, while
-    scraper records carry plain floats. `Decimal('787335.92') == 787335.92` is
-    *False* (Decimal compares against the float's exact, unrounded binary value),
-    even though they represent the same number -- so Decimal/float pairs are
-    compared as floats instead.
+    Numbers are compared to the cent: Numeric(16, 2) columns come back as
+    `decimal.Decimal` or as floats carrying the conversion's last-bit noise
+    (2812.1053465792015 vs 2812.105346579201 after a BGN->EUR division), so
+    both sides are rounded to 2 decimals. Payload dicts are compared without
+    `_VOLATILE_RAW_KEYS`.
     """
-    if isinstance(old_value, decimal.Decimal) or isinstance(new_value, decimal.Decimal):
-        if old_value is None or new_value is None:
-            return old_value == new_value
-        return float(old_value) == float(new_value)
+    numeric = (int, float, decimal.Decimal)
+    if (
+        isinstance(old_value, numeric) and isinstance(new_value, numeric)
+        and not isinstance(old_value, bool) and not isinstance(new_value, bool)
+    ):
+        return round(float(old_value), 2) == round(float(new_value), 2)
+    if isinstance(old_value, dict) and isinstance(new_value, dict):
+        return _strip_volatile(old_value) == _strip_volatile(new_value)
     return old_value == new_value
 
 
@@ -100,6 +119,10 @@ def upsert_procurements(session: Session, records: list[dict[str, Any]]) -> tupl
             if not _unchanged(old_value, new_value):
                 setattr(existing, field, new_value)
                 changed = True
+            elif field == "raw_json" and old_value != new_value:
+                # Only volatile ids differ: keep the payload current without
+                # reporting the contract as changed.
+                setattr(existing, field, new_value)
         if changed:
             existing.updated_at = now
             updated += 1

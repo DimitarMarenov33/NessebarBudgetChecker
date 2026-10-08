@@ -552,3 +552,33 @@ def test_nesebar_site_picks_up_late_reports_for_older_months(tmp_path) -> None:
     got = run(since="2024-01", known_urls=known)
     assert "B3_2018_4_5206.xls" in got and "IB3_2018_4_5206_DES.xls" in got
     assert "B1_2019_1_5206.xls" not in got
+
+
+
+def test_upsert_ignores_float_noise_and_volatile_ids_but_not_real_changes(db_session: Session) -> None:
+    base = {
+        "source": "eop", "source_id": "777", "title": "Ремонт",
+        "contract_value_eur": 2812.1053465792015,
+        "raw_json": {"contract": {"ContractReportId": 1, "CurrentContractValueEuro": 2812.11}},
+    }
+    upsert_procurements(db_session, [base])
+    db_session.commit()
+
+    # Same contract, re-fetched: last-bit float noise and a regenerated id.
+    refetched = {
+        **base,
+        "contract_value_eur": 2812.105346579201,
+        "raw_json": {"contract": {"ContractReportId": 2, "CurrentContractValueEuro": 2812.11}},
+    }
+    assert upsert_procurements(db_session, [refetched]) == (0, 0)
+    db_session.commit()
+    row = db_session.scalars(select(Procurement).where(Procurement.source_id == "777")).one()
+    assert row.raw_json["contract"]["ContractReportId"] == 2  # payload kept current
+
+    # A real price change (an annex) is still detected.
+    annexed = {
+        **refetched,
+        "contract_value_eur": 3100.0,
+        "raw_json": {"contract": {"ContractReportId": 3, "CurrentContractValueEuro": 3100.0}},
+    }
+    assert upsert_procurements(db_session, [annexed]) == (0, 1)
