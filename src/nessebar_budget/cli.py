@@ -24,6 +24,7 @@ from nessebar_budget.db.repo import (
 )
 from nessebar_budget.db.session import get_session, init_db
 from nessebar_budget.notify.telegram import send_flags_notification
+from nessebar_budget.scrapers.cadastre import CadastreScraper, sync_cadastre
 from nessebar_budget.scrapers.declarations import DeclarationsScraper
 from nessebar_budget.scrapers.eop import EopScraper
 from nessebar_budget.scrapers.minfin import MinfinScraper
@@ -43,7 +44,7 @@ STUB_SCRAPERS = {
     "minfin": MinfinScraper,
 }
 
-ALL_SOURCES = ["eop", "sigma", "nesebar_site", "declarations", "registry", *STUB_SCRAPERS]
+ALL_SOURCES = ["eop", "sigma", "nesebar_site", "declarations", "registry", "cadastre", *STUB_SCRAPERS]
 
 
 @app.command("init-db")
@@ -73,11 +74,11 @@ def scrape_command(
     ),
 ) -> None:
     """Fetch records from SOURCE (one of: eop, sigma, nesebar_site, declarations,
-    registry, minfin).
+    registry, cadastre, minfin).
 
-    `eop`, `sigma`, `nesebar_site`, `declarations`, and `registry` fetch live
-    records and upsert them into the database, printing a summary. `minfin`
-    is still an unimplemented stub.
+    `eop`, `sigma`, `nesebar_site`, `declarations`, `registry`, and
+    `cadastre` fetch live records and upsert them into the database,
+    printing a summary. `minfin` is still an unimplemented stub.
     """
     if source not in ALL_SOURCES:
         console.print(f"[red]Unknown source {source!r}. Choices: {', '.join(ALL_SOURCES)}[/red]")
@@ -145,6 +146,31 @@ def scrape_command(
         )
         for eik, reason in scraper.failures:
             console.print(f"[red]FAILED[/red] {eik}: {reason}")
+        return
+
+    if source == "cadastre":
+        if since is not None:
+            console.print("[yellow]--since is ignored for source 'cadastre'.[/yellow]")
+        if limit is not None:
+            console.print("[yellow]--limit is ignored for source 'cadastre' (14 settlements, always all).[/yellow]")
+        init_db()
+        scraper = CadastreScraper(delay=delay if delay is not None else 3.0)
+        try:
+            with get_session() as session:
+                summary = sync_cadastre(session, scraper=scraper)
+                session.commit()
+        finally:
+            scraper.close()
+
+        console.print(
+            f"[green]cadastre[/green]: {summary['object_names']} object name(s), "
+            f"{summary['titles']} procurement title(s) scanned; "
+            f"{summary['referenced_parcel_ids']} parcel id(s), "
+            f"{summary['referenced_street_keys']} street reference(s) found; "
+            f"{summary['total_parcels_stored']} parcel(s) stored."
+        )
+        for row in summary["per_settlement"]:
+            console.print(f"  {row['label']}: {row['stored']} parcel(s)")
         return
 
     if source in STUB_SCRAPERS:

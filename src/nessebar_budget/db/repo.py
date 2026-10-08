@@ -9,7 +9,7 @@ from typing import Any
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from nessebar_budget.db.models import Company, CompanyPerson, Official, Procurement
+from nessebar_budget.db.models import CadastreParcel, Company, CompanyPerson, Official, Procurement
 from nessebar_budget.scrapers.declarations import normalize_name
 
 #: Procurement fields that a normalized scraper record may set. Anything else
@@ -280,3 +280,51 @@ def upsert_company(session: Session, parsed: dict[str, Any]) -> Company:
         session.add(CompanyPerson(company_id=company.id, **values))
 
     return company
+
+
+def replace_cadastre_parcels(
+    session: Session,
+    ekatte: str,
+    parcels: list[dict[str, Any]],
+    source_path: str,
+    source_modified: dt.date,
+) -> int:
+    """Replace every stored `CadastreParcel` row for one settlement
+    (`ekatte`) with `parcels` (dicts shaped like `scrapers.cadastre.
+    read_parcels()`'s output). Does not commit -- the caller controls the
+    transaction boundary. Returns the number of rows inserted.
+
+    Delete-then-reinsert (same pattern as `upsert_company`'s
+    `company_people` rows) rather than a per-row upsert: which parcels this
+    project needs to store for a given settlement can change from run to
+    run (new budget objects/contracts reference new identifiers/streets),
+    so a stale row that's no longer referenced should disappear, not linger.
+    """
+    session.execute(delete(CadastreParcel).where(CadastreParcel.ekatte == ekatte))
+    session.flush()
+
+    now = _now()
+    for p in parcels:
+        centroid_lonlat = p.get("centroid_lonlat")
+        session.add(
+            CadastreParcel(
+                cadnum=p["cadnum"],
+                ekatte=p["ekatte"],
+                settlement=p.get("ekattefn") or None,
+                area_m2=p.get("AREA"),
+                address=p.get("immaddr") or None,
+                street=p.get("strename") or None,
+                street_number=p.get("strnum") or None,
+                proptype=p.get("proptype") or None,
+                purptype=p.get("purptype") or None,
+                usetype=p.get("usetype") or None,
+                quarter=p.get("quarter") or None,
+                centroid_lat=centroid_lonlat[1] if centroid_lonlat else None,
+                centroid_lon=centroid_lonlat[0] if centroid_lonlat else None,
+                geometry_geojson=p.get("geometry_geojson"),
+                source_path=source_path,
+                source_modified=source_modified,
+                fetched_at=now,
+            )
+        )
+    return len(parcels)

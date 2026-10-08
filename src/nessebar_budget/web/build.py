@@ -36,7 +36,7 @@ from sqlalchemy.orm import Session
 
 from nessebar_budget.analysis.rules._common import _local_date
 from nessebar_budget.db.budget_models import BudgetLineItem, CashExecutionLine
-from nessebar_budget.db.models import Company, CompanyPerson, Flag, Procurement
+from nessebar_budget.db.models import CadastreParcel, Company, CompanyPerson, Flag, Procurement
 from nessebar_budget.scrapers.registry import normalize_eiks
 from nessebar_budget.web import geo
 
@@ -294,6 +294,10 @@ class ContractView:
     sigma_sector_code: Any = None
     sigma_eu_funded: bool | None = None
     flags: list[Any] = field(default_factory=list)
+    #: "Точни места" feature dict (see `web.geo.build_locations`), attached
+    #: once the map's exact-location data is built; `None` when this
+    #: contract's title could not be placed at a parcel/street.
+    location: dict[str, Any] | None = None
 
     @property
     def display_value_eur(self) -> float | None:
@@ -2291,6 +2295,12 @@ def _make_env() -> Environment:
     env.globals["tier_labels"] = TIER_LABELS
     env.globals["tier_tooltips"] = TIER_TOOLTIPS
     env.globals["repo_url"] = REPO_URL
+    # Cache-busting tag for static/style.css and static/app.js: a hash of
+    # their contents, so a deploy that changes them is picked up at once
+    # instead of after the browser's cached copy expires.
+    env.globals["asset_version"] = hashlib.sha256(
+        b"".join((STATIC_DIR / name).read_bytes() for name in ("style.css", "app.js"))
+    ).hexdigest()[:10]
     env.globals["rule_labels"] = RULE_LABELS
     env.globals["sources_bgn_note"] = SOURCES_BGN_NOTE
     env.globals["tr_stale_report_note"] = TR_STALE_REPORT_NOTE
@@ -2518,6 +2528,41 @@ def build_site(out_dir: Path, db_url: str | None = None) -> None:
             encoding="utf-8",
         )
 
+        # -- map: exact locations ("Точни места") --
+        cadastre_rows = list(session.scalars(select(CadastreParcel)))
+        locations = geo.build_locations(contracts, flags, budget, cadastre_rows)
+        features_by_id = {f["id"]: f for f in locations["features"]}
+
+        for c in contracts:
+            loc_id = locations["by_contract_id"].get(c.id)
+            c.location = features_by_id.get(loc_id) if loc_id else None
+
+        for f in flags:
+            loc_id = None
+            if f["subject_type"] == "budget_object":
+                obj_name = (f["details"] or {}).get("object_name")
+                if obj_name:
+                    loc_id = locations["by_object_name"].get(obj_name)
+            elif f["procurement_id"] is not None:
+                located_contract = contract_by_proc_id.get(
+                    f["procurement_id"]
+                ) or sigma_proc_id_to_contract.get(f["procurement_id"])
+                if located_contract is not None:
+                    loc_id = locations["by_contract_id"].get(located_contract.id)
+            f["location"] = features_by_id.get(loc_id) if loc_id else None
+
+        for s in map_data["settlements"]:
+            s["locations"] = [f for f in locations["features"] if f["settlement_key"] == s["key"]]
+
+        (data_dir / "locations.geojson").write_text(
+            json.dumps(geo.export_locations_geojson(locations), ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        (data_dir / "location_parcels.geojson").write_text(
+            json.dumps(geo.export_location_parcels_geojson(locations), ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+
     generated_at = dt.datetime.now(dt.UTC).replace(microsecond=0)
     generated_at_label = generated_at.strftime("%d.%m.%Y %H:%M") + " UTC"
 
@@ -2588,6 +2633,14 @@ def build_site(out_dir: Path, db_url: str | None = None) -> None:
             "cash_periods": cash["periods"],
         },
         "sigma_dedupe": sigma_stats,
+        "locations": {
+            "located_budget_objects": sum(
+                1 for f in locations["features"] if f["kind"] == "budget_object"
+            ),
+            "total_budget_objects": locations["total_budget_objects"],
+            "located_contracts": sum(1 for f in locations["features"] if f["kind"] == "contract"),
+            "total_contracts": len(contracts),
+        },
     }
     (data_dir / "meta.json").write_text(
         json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8"

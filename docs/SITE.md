@@ -44,7 +44,7 @@ For CI/CD (GitHub Actions building and deploying this to Pages), see
 | `flags/index.html` | All flags: a tier filter (segmented control: Всички / Нарушения / Сигнали / Непрозрачност) alongside severity/rule/**година** filters and search (all combine), tier+severity+rule chips per row, counts per tier and per severity. The row's date shows both the event year and the detection date (see "Event year" below) — a small bold year above the muted detection date, right-aligned next to the chips. Each row is a native `<details>`/`<summary>` — no JS needed to expand it — revealing the explanation, legal basis, documents to request (ЗДОИ), and a small numbers list parsed out of `details_json` (never the raw JSON), then a closed-by-default "Източници" box (see "Provenance box" below). Renders an empty state gracefully if no flags exist yet. |
 | `flags/<id>.html` | One permalink page per flag: title = rule label, tier + severity chips, message, explanation, legal basis, documents list, numbers, an "Източници" section (collapsible, closed by default), subject link, first/last-seen dates, a 3-step "Как да поискате документите" box, and a "Копирай текст за заявление" `<details>` with a static, pre-filled plain-text ЗДОИ request template (copy button via `static/app.js`). Linked from every flag row and from Telegram deep links `flags/#<id>` (the bare numeric `id` is the row's anchor on the index page too). |
 | `methodology.html` | Sources, update cadence, the eop/SIGMA dedupe heuristic, a "За какви нарушения следим" section (what misconduct the three tiers cover, in plain Bulgarian, incl. which Наказателен кодекс offences a *signal* may relate to once documents confirm it), a data-driven "Правила за сигнали" section (one entry per rule — label, tier, what it detects, thresholds, legal basis, suggested documents — built from `build.py`'s `METHODOLOGY_RULES`, content sourced from `docs/RULES.md`), "Какво можете да направите" (the ЗДОИ route and which bodies to signal — АДФИ, АОП, Сметна палата, managing authority/OLAF, prosecution only with evidence), and the "flags are not proof of wrongdoing" disclaimer. |
-| `map.html` | "Карта на разходите" — a Leaflet map, one circle marker per settlement of Община Несебър (14 towns/villages + the resort areas Слънчев бряг and Елените), sized by sqrt-scaled all-years (or selected-year) spent, popup with plan/spent/objects/contracts/flags and a link to the settlement page; a year selector (segmented control); a toggle that adds a live АГКК/КАИС cadastre overlay (a plain Leaflet image overlay); a curated-pins layer; a ranking table below the map. See "Карта по населени места" below. |
+| `map.html` | "Карта на разходите" — a Leaflet map, one circle marker per settlement of Община Несебър (14 towns/villages + the resort areas Слънчев бряг and Елените), sized by sqrt-scaled all-years (or selected-year) spent, popup with plan/spent/objects/contracts/flags and a link to the settlement page; a year selector (segmented control); a "Точни места" layer (on by default) of budget objects/contracts placed at an exact cadastral parcel/street, with parcel outlines at zoom ≥ 16 and a `#loc=<id>` deep link; a toggle that adds a live АГКК/КАИС cadastre overlay (a plain Leaflet image overlay); a curated-pins layer; a ranking table below the map. See "Карта по населени места" and "Точни места" below. |
 | `settlements/index.html` | Ranking table of all 16 settlements: all-years spent, last-3-years columns, objects, contracts, flags, plus an "unassigned" row so the table's numbers are traceable against the budget pages. |
 | `settlements/<key>.html` | One settlement's detail: header (name/kind/EKATTE), 4 KPI cards, a per-year table (plan/spent/objects/change vs. previous year, with a note on any year using a fallback month), a sortable objects table (name/period/plan/spent/cadastral identifiers linked to KAIS), a contracts list, a flags list, and a "Как е изчислено" box naming exactly which rows/aliases/cadastral prefix produced the numbers. |
 | `data/index.html` | Links to every export below, plus a summary of current counts. |
@@ -59,7 +59,9 @@ For CI/CD (GitHub Actions building and deploying this to Pages), see
 | `flags.json` | All flags: `tier`, `tier_label`, `severity`, `message`, `explanation`, `documents` (list), `law_ref`, `details`, `event_year` (int or null, see "Event year" below), `sources` (the raw `sources_json` provenance list, see docs/RULES.md), `subject_href`/`subject_label`, `permalink`, and the usual timestamps — whatever optional columns the live `flags` table currently has, see "Flag schema" below. |
 | `map.json` | GeoJSON `FeatureCollection`, one Point feature per settlement (`properties`: key/name/kind/ekatte/href, `all_years` and per-year `plan`/`spent`/`objects_count`, `contracts_count`/`contracts_total_eur`, `flags_count`), plus top-level `unassigned` (same shape, for objects with no recognised settlement), `years_available`, `notes` (which years used a fallback month instead of December) and `pins` (curated exact coordinates, see below). Consumed client-side by `map.html`'s own script — never embedded inline in the HTML. |
 | `settlements.csv` | The same per-settlement totals as `map.json`, flattened to one row per settlement (plus an `unassigned` row), for spreadsheet use. |
-| `meta.json` | Build timestamp, headline counts, and the SIGMA-match statistics also quoted in `methodology.html`. |
+| `locations.geojson` | GeoJSON `FeatureCollection`, one Point feature per budget object/contract placed at an exact cadastral parcel/street (see "Точни места" below) — `properties`: `id`, `kind`, `title`, `settlement`/`settlement_key`, `precision`, `cadnums`/`street`, `address`, `area_m2`, `proptype`, `usetype`, `amounts`, `display_amount`, `year` (contracts only), `href`, `flags`, `unresolved`, `source`. |
+| `location_parcels.geojson` | GeoJSON `FeatureCollection` of the parcel polygons backing `locations.geojson` (one Feature per distinct `cadnum` actually used, `properties.location_ids` lists which location(s) reference it) — for drawing outlines on the map. |
+| `meta.json` | Build timestamp, headline counts, the SIGMA-match statistics, and `locations` (located/total counts for budget objects and contracts) also quoted in `methodology.html`. |
 
 ## Карта по населени места (the map feature)
 
@@ -155,6 +157,38 @@ don't exist yet, and `geo.load_pins()` reads whatever rows are there into
 `map.json`'s `pins` array, rendered as a second Leaflet layer. No pin is
 required for a settlement's own totals to show up — pins are purely an
 optional, human-verified precision layer on top.
+
+## Точни места (exact parcel/street placement)
+
+A second, independent precision layer on top of the one-point-per-settlement
+map above — unlike curated pins, this one is fully automatic and
+deterministic: no human verification step, but also no fuzzy matching or
+geocoding, ever. `src/nessebar_budget/web/locate.py` (pure, no DB/network)
+extracts a KAIS cadastral identifier or a street name from a budget object's
+name / a contract's title; `src/nessebar_budget/scrapers/cadastre.py`
+downloads АГКК's own open cadastral map (see `docs/sources/CADASTRE.md` for
+the endpoint, fields, CRS and what's stored) and stores only the parcels
+this project's data actually references; `web.geo.build_locations` combines
+the two into one Feature per located item, exported as `data/
+locations.geojson` (points) and `data/location_parcels.geojson` (parcel
+outlines, for the map) and rendered as the map's "Точни места" layer,
+`settlements/<key>.html`'s own "Точни места" list, and a "Местоположение"
+line on `contracts/<id>.html`/`flags/<id>.html` when that item resolved.
+
+**Resolution order** (`locate.resolve`): a cadastral identifier always wins
+if any is present and stored (precision `'parcel'` — self-describing, no
+settlement restriction needed, since the id's own 5-digit EKATTE prefix
+already says which settlement); only if none resolves does a street name
+get tried (precision `'street'`, matched via the normalized `street_key`
+against that settlement's own "street-type" parcels — `usetype` containing
+"улица"/"алея"/"площад"/"път" — restricted to the item's own candidate
+settlement(s), accepted only when *exactly one* candidate settlement
+matches). An item naming neither (or naming something not in our stored
+data) simply isn't placed exactly — it stays at settlement level like every
+other object, same as before this feature existed.
+
+Full write-up (matching rules, what isn't placed and why, ownership-type
+caveat, attribution): `methodology.html#exact-locations`.
 
 ## Dedupe & enrichment: ЦАИС ЕОП + SIGMA
 

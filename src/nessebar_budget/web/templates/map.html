@@ -44,6 +44,11 @@
         <button type="button" data-map-year="{{ y }}" aria-pressed="false">{{ y }}</button>
         {% endfor %}
       </nav>
+      <label class="switch" for="locations-toggle">
+        <input type="checkbox" id="locations-toggle" checked>
+        <span class="switch__track" aria-hidden="true"><span class="switch__thumb"></span></span>
+        <span class="switch__label">Точни места</span>
+      </label>
       <label class="switch" for="cadastre-toggle">
         <input type="checkbox" id="cadastre-toggle">
         <span class="switch__track" aria-hidden="true"><span class="switch__thumb"></span></span>
@@ -71,6 +76,15 @@
         място, за да съвпада сборът с общите суми в бюджета.</p>
         <p>Кадастралният слой (превключвателят по-горе) е допълнителен, зареден на живо от публичния
         сървър на АГКК — не е част от данните на този сайт и е само ориентировъчен визуален слой.</p>
+        <p><span class="legend-dot legend-dot--obj" aria-hidden="true"></span> <strong>Точно място
+        (обект)</strong> / <span class="legend-dot legend-dot--contract" aria-hidden="true"></span>
+        <strong>Точно място (договор)</strong>: обект от капиталовата програма или договор от ЦАИС ЕОП,
+        чийто текст назовава номер на имот или име на улица от кадастралната карта на АГКК — показан на
+        своята точна координата, не само по населено място. <span class="legend-dot legend-dot--flag"
+        aria-hidden="true"></span> червен пръстен около точката означава открит сигнал по този обект/
+        договор. Останалите обекти/договори нямат достатъчно точен текст и са показани само чрез кръга
+        на населеното им място по-горе. Контурите на имотите (тънки линии) се показват при приближаване
+        на картата (мащаб 16 и по-голям).</p>
         <p class="muted">Точни координати на отделни обекти (а не само на населеното място) се
         добавят доброволно — вижте <a href="https://github.com/DimitarMarenov33/NessebarBudgetChecker/tree/main/data/locations" rel="noopener">data/locations/README.md</a>.</p>
       </div>
@@ -126,12 +140,24 @@
 
   var settlementLayer = L.layerGroup().addTo(map);
   var pinsLayer = L.layerGroup().addTo(map);
+  var locationsLayer = L.layerGroup().addTo(map);
+  var parcelOutlinesLayer = L.layerGroup();
   var cadastreLayer = null;
   var geo = null;
+  var locationsGeo = null;
+  var parcelsGeo = null;
   var currentYear = "all";
+  var PARCEL_OUTLINE_MIN_ZOOM = 16;
 
   function fmtEur(v) {
     return Math.round(v || 0).toLocaleString("en-US") + " €";
+  }
+
+  function fmtIsoDate(iso) {
+    if (!iso || typeof iso !== "string") return null;
+    var parts = iso.split("-");
+    if (parts.length !== 3) return iso;
+    return parts[2] + "." + parts[1] + "." + parts[0] + " г.";
   }
 
   function valueFor(props, field) {
@@ -171,6 +197,125 @@
     });
   }
 
+  // -- "Точни места": one marker per budget object/contract whose text
+  // resolved to an exact cadastral parcel or street (data/locations.geojson,
+  // built by web.geo.build_locations -- see docs/SITE.md). Markers filter by
+  // the same year selector as the settlement circles above.
+  var locationMarkersById = {};
+
+  function locationMatchesYear(props) {
+    if (currentYear === "all") return true;
+    if (props.kind === "contract") {
+      return props.year !== null && String(props.year) === String(currentYear);
+    }
+    return !!(props.amounts && Object.prototype.hasOwnProperty.call(props.amounts, String(currentYear)));
+  }
+
+  function locationPopupHtml(props) {
+    var lines = [];
+    lines.push("<strong>" + (props.title || "(без заглавие)") + "</strong>");
+
+    var locLine = [];
+    if (props.precision === "parcel" && props.cadnums && props.cadnums.length) {
+      locLine.push("Имот " + props.cadnums[0]);
+      // The cadastre address already starts with the settlement ("с. Равда, ул. ...").
+      if (props.address) locLine.push(props.address);
+      else if (props.settlement) locLine.push(props.settlement);
+      if (props.area_m2) locLine.push(Math.round(props.area_m2) + " m²");
+      if (props.proptype) locLine.push(props.proptype);
+    } else if (props.precision === "street") {
+      locLine.push("Улица „" + props.street + "“" + (props.settlement ? ", " + props.settlement : "") + " — по кадастралната карта");
+    }
+    if (locLine.length) lines.push(locLine.join(" · "));
+
+    if (props.kind === "contract") {
+      if (props.amounts && props.amounts.value_eur !== null) lines.push("Стойност: " + fmtEur(props.amounts.value_eur));
+      var cdate = props.amounts && fmtIsoDate(props.amounts.contract_date);
+      if (cdate) lines.push("Дата: " + cdate);
+      if (props.amounts && props.amounts.contractor) lines.push("Изпълнител: " + props.amounts.contractor);
+    } else if (props.amounts) {
+      Object.keys(props.amounts).sort().forEach(function (y) {
+        var b = props.amounts[y];
+        lines.push(y + ": план " + fmtEur(b.plan) + " · похарчено " + fmtEur(b.spent));
+      });
+    }
+
+    if (props.flags && props.flags.length) {
+      lines.push("Сигнали: " + props.flags.map(function (f) {
+        return "<a href=\"" + root + f.href + "\">" + f.rule_label + "</a>";
+      }).join(", "));
+    }
+
+    lines.push("<a href=\"" + root + props.href + "\">Виж страницата →</a>");
+    if (props.source) lines.push("<span class=\"map-popup__source\">" + props.source + "</span>");
+    return lines.join("<br>");
+  }
+
+  function renderLocations() {
+    locationsLayer.clearLayers();
+    locationMarkersById = {};
+    if (!locationsGeo) return;
+    locationsGeo.features.forEach(function (f) {
+      var props = f.properties;
+      if (!locationMatchesYear(props)) return;
+      var hasFlags = !!(props.flags && props.flags.length);
+      var fillColor = props.kind === "contract" ? "#f2994a" : "#5e6ad2";
+      var marker = L.circleMarker(
+        [f.geometry.coordinates[1], f.geometry.coordinates[0]],
+        {
+          radius: hasFlags ? 7 : 5,
+          color: hasFlags ? "#eb5757" : fillColor,
+          weight: hasFlags ? 3 : 1,
+          fillColor: fillColor,
+          fillOpacity: 0.9
+        }
+      );
+      marker.bindPopup(locationPopupHtml(props));
+      marker.addTo(locationsLayer);
+      locationMarkersById[props.id] = marker;
+    });
+  }
+
+  function renderParcelOutlines() {
+    parcelOutlinesLayer.clearLayers();
+    if (!parcelsGeo) return;
+    L.geoJSON(parcelsGeo, { style: { color: "#8a8f98", weight: 1, fillOpacity: 0.04 } })
+      .addTo(parcelOutlinesLayer);
+  }
+
+  function refreshParcelOutlines() {
+    var shouldShow = locationsToggle && locationsToggle.checked && map.getZoom() >= PARCEL_OUTLINE_MIN_ZOOM;
+    if (shouldShow && !map.hasLayer(parcelOutlinesLayer)) {
+      map.addLayer(parcelOutlinesLayer);
+    } else if (!shouldShow && map.hasLayer(parcelOutlinesLayer)) {
+      map.removeLayer(parcelOutlinesLayer);
+    }
+  }
+
+  function openDeepLink() {
+    var match = /#loc=([^&]+)/.exec(window.location.hash);
+    if (!match) return;
+    var id = decodeURIComponent(match[1]);
+    var marker = locationMarkersById[id];
+    if (!marker) return;
+    map.setView(marker.getLatLng(), Math.max(map.getZoom(), 17));
+    marker.openPopup();
+  }
+
+  var locationsToggle = document.getElementById("locations-toggle");
+  if (locationsToggle) {
+    locationsToggle.addEventListener("change", function () {
+      if (locationsToggle.checked) {
+        map.addLayer(locationsLayer);
+      } else {
+        map.removeLayer(locationsLayer);
+        map.removeLayer(parcelOutlinesLayer);
+      }
+      refreshParcelOutlines();
+    });
+  }
+  map.on("zoomend", refreshParcelOutlines);
+
   fetch(root + "data/map.json")
     .then(function (r) { return r.json(); })
     .then(function (data) {
@@ -186,12 +331,31 @@
     })
     .catch(function () { /* map stays usable (tiles + controls) without the data layer */ });
 
+  fetch(root + "data/locations.geojson")
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+      locationsGeo = data;
+      renderLocations();
+      openDeepLink();
+    })
+    .catch(function () { /* exact-location layer is additive; map stays usable without it */ });
+
+  fetch(root + "data/location_parcels.geojson")
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+      parcelsGeo = data;
+      renderParcelOutlines();
+      refreshParcelOutlines();
+    })
+    .catch(function () { /* outlines are a visual extra only */ });
+
   var yearButtons = Array.prototype.slice.call(document.querySelectorAll("[data-map-year]"));
   yearButtons.forEach(function (btn) {
     btn.addEventListener("click", function () {
       currentYear = btn.getAttribute("data-map-year");
       yearButtons.forEach(function (b) { b.setAttribute("aria-pressed", String(b === btn)); });
       render();
+      renderLocations();
     });
   });
 

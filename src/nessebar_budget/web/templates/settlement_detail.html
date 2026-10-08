@@ -105,6 +105,32 @@
   </section>
   {% endif %}
 
+  {% if s.locations %}
+  <section class="block">
+    <div class="block__head">
+      <h2 class="block__title">Точни места</h2>
+      <p class="block__sub">Обекти/договори в {{ s.name }}, чийто текст сочи точен номер на имот или
+      име на улица от кадастралната карта на АГКК — вижте <a href="{{ root }}methodology.html#exact-locations">как
+      се разпознава</a>.</p>
+    </div>
+    <ul class="rows">
+      {% for loc in s.locations | sort(attribute="display_amount", reverse=true) %}
+      <li>
+        <a class="rows__main" href="{{ root }}{{ loc.href }}">
+          <span class="clamp-2">{{ loc.title or "(без заглавие)" }}</span>
+          <span class="sub">
+            {% if loc.precision == "parcel" %}Имот {{ loc.cadnums[0] }}{% else %}Улица „{{ loc.street }}“{% endif %}
+            {% if loc.flags %} · {{ loc.flags | length }} сигнал(и){% endif %}
+            · <a href="{{ root }}map.html#loc={{ loc.id }}">На картата</a>
+          </span>
+        </a>
+        <span class="rows__num">{{ loc.display_amount | eur }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
   {% if s.contracts.list %}
   <section class="block">
     <div class="block__head">

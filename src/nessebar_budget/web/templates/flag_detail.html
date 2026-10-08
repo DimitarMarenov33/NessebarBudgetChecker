@@ -61,6 +61,13 @@
     {% else %}
     <p class="muted">Няма пряка връзка към конкретна поръчка/обект.</p>
     {% endif %}
+    {% if f.location %}
+    <p class="loc-line">
+      {% if f.location.precision == "parcel" %}Имот {{ f.location.cadnums[0] }}{% else %}Улица „{{ f.location.street }}“{% endif %}
+      {% if f.location.settlement %}, {{ f.location.settlement }}{% endif %}
+      · <a href="{{ root }}map.html#loc={{ f.location.id }}">Виж на картата →</a>
+    </p>
+    {% endif %}
     <p class="footnote">{% if f.event_year %}Година на възникване: <strong>{{ f.event_year }}</strong> ·
     {% endif %}Първо засечен на <strong>{{ f.first_seen_at | bgdate }}</strong> · последно потвърден на
     <strong>{{ f.last_seen_at | bgdate }}</strong>.</p>

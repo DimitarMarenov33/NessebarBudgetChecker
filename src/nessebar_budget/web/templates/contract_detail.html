@@ -65,6 +65,17 @@
         <dt>Източник</dt>
         <dd><a class="break" href="{{ c.url }}" rel="noopener">{{ c.url }} <span aria-hidden="true">↗</span></a></dd>
       </div>
+      {% if c.location %}
+      <div class="facts__row">
+        <dt>Местоположение</dt>
+        <dd>
+          {% if c.location.precision == "parcel" %}Имот {{ c.location.cadnums[0] }}{% else %}Улица „{{ c.location.street }}“{% endif %}
+          {% if c.location.settlement %}, {{ c.location.settlement }}{% endif %}
+          {% if c.location.address %}<br><span class="muted">{{ c.location.address }}</span>{% endif %}
+          <br><a href="{{ root }}map.html#loc={{ c.location.id }}">Виж на картата →</a>
+        </dd>
+      </div>
+      {% endif %}
     </dl>
   </section>
 

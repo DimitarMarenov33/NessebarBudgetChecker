@@ -10,6 +10,8 @@
   ("flags.json", "JSON", (meta.counts.flags | num) ~ " сигнала с правило, ниво (tier), тежест, обяснение, документи и правно основание"),
   ("map.json", "GeoJSON", "Капиталови разходи, договори и сигнали по населено място, с координати"),
   ("settlements.csv", "CSV", "Същите суми по населено място, в табличен вид"),
+  ("locations.geojson", "GeoJSON", ((meta.locations.located_budget_objects + meta.locations.located_contracts) | string) ~ " обекта/договора, разпознати на точен имот или улица от кадастралната карта на АГКК"),
+  ("location_parcels.geojson", "GeoJSON", "Контурите на имотите зад locations.geojson, за очертаване на картата"),
   ("companies.csv", "CSV", (meta.counts.companies | num) ~ " фирми от Търговския регистър, по ЕИК на изпълнителите"),
   ("company_people.csv", "CSV", "Управители, съдружници, еднолични собственици и членове на съвета на тези фирми"),
   ("meta.json", "JSON", "Метаданни за генерирането на сайта и съпоставянето със СИГМА"),

@@ -27,6 +27,7 @@ ALL_STEP_NAMES = [
     "scrape_declarations",
     "scrape_nesebar_site",
     "parse_budget",
+    "scrape_cadastre",
     "analyze",
     "notify_pending",
     "build_site",

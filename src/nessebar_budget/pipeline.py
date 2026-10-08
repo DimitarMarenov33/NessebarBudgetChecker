@@ -41,7 +41,7 @@ from nessebar_budget.db.budget_repo import (
     parse_budget_reports,
     upsert_budget_report,
 )
-from nessebar_budget.db.models import Flag
+from nessebar_budget.db.models import BudgetReport, Flag
 from nessebar_budget.db.repo import (
     distinct_contractor_eiks,
     upsert_company,
@@ -49,6 +49,7 @@ from nessebar_budget.db.repo import (
     upsert_procurements,
 )
 from nessebar_budget.db.session import get_session, init_db
+from nessebar_budget.scrapers.cadastre import CadastreScraper, sync_cadastre
 from nessebar_budget.scrapers.declarations import DeclarationsScraper
 from nessebar_budget.scrapers.eop import EopScraper
 from nessebar_budget.scrapers.nesebar_site import NesebarSiteScraper
@@ -72,6 +73,7 @@ _STEP_NAMES: tuple[str, ...] = (
     "scrape_declarations",
     "scrape_nesebar_site",
     "parse_budget",
+    "scrape_cadastre",
     "analyze",
     "notify_pending",
     "build_site",
@@ -183,11 +185,17 @@ def _step_scrape_declarations(settings: Settings) -> dict[str, Any]:
 
 def _step_scrape_nesebar_site(settings: Settings) -> dict[str, Any]:
     since = _previous_period()
+    # Every report URL already stored: anything listed on reports.html that
+    # is not among them is fetched even if it covers an older month, so a
+    # report the municipality publishes late is not missed (and the
+    # missing-report signal for that month can resolve).
+    with get_session() as session:
+        known_urls = {u for u in session.scalars(select(BudgetReport.url)) if u}
     scraper = NesebarSiteScraper()
     try:
         # robots.txt Crawl-delay is 10s; be explicit rather than relying on
         # the scraper's own default.
-        records = scraper.run(since=since, delay=10.0)
+        records = scraper.run(since=since, delay=10.0, known_urls=known_urls)
     finally:
         scraper.close()
 
@@ -196,7 +204,8 @@ def _step_scrape_nesebar_site(settings: Settings) -> dict[str, Any]:
             upsert_budget_report(session, record)
         session.commit()
 
-    return {"since": since, "fetched": len(records)}
+    new = sum(1 for r in records if r["url"] not in known_urls)
+    return {"since": since, "fetched": len(records), "new_reports": new}
 
 
 def _step_parse_budget(settings: Settings) -> dict[str, Any]:
@@ -207,6 +216,23 @@ def _step_parse_budget(settings: Settings) -> dict[str, Any]:
         summary = parse_budget_reports(session)
         session.commit()
     return summary.as_dict()
+
+
+def _step_scrape_cadastre(settings: Settings) -> dict[str, Any]:
+    """Download АГКК's open-data cadastral map for every settlement and
+    replace the `CadastreParcel` rows this project's own budget objects/
+    contracts reference (see `scrapers.cadastre.sync_cadastre`) -- placed
+    after `parse_budget` (needs that run's `budget_line_items` object names)
+    and before `analyze` (flags don't depend on this, but the site build
+    that `analyze`'s later sibling steps feed into does)."""
+    scraper = CadastreScraper(delay=3.0)
+    try:
+        with get_session() as session:
+            summary = sync_cadastre(session, scraper=scraper)
+            session.commit()
+    finally:
+        scraper.close()
+    return summary
 
 
 def _step_analyze(settings: Settings) -> dict[str, Any]:
@@ -258,6 +284,37 @@ def _step_build_site(settings: Settings) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # Orchestration
 # ---------------------------------------------------------------------------
+
+
+def _write_github_summary(summary: dict[str, Any]) -> None:
+    """Append a per-step table to the GitHub Actions run page when running
+    in Actions ($GITHUB_STEP_SUMMARY), so a failed or empty source is
+    visible at a glance. A no-op elsewhere; never raises."""
+    import json
+    import os
+
+    path = os.environ.get("GITHUB_STEP_SUMMARY")
+    if not path:
+        return
+    lines = [
+        "## Weekly pipeline",
+        "",
+        "| Step | Result | Seconds | Details |",
+        "|---|---|---|---|",
+    ]
+    for step in summary.get("steps", []):
+        result = "ok" if step.get("ok") else "**FAILED**"
+        detail = step.get("error") if not step.get("ok") else step.get("info")
+        text = json.dumps(detail, ensure_ascii=False, default=str) if detail else ""
+        if len(text) > 300:
+            text = text[:297] + "..."
+        text = text.replace("|", "\\|")
+        lines.append(f"| {step.get('name')} | {result} | {step.get('elapsed_seconds')} | {text} |")
+    try:
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write("\n".join(lines) + "\n")
+    except OSError:
+        logger.warning("pipeline weekly: could not write GITHUB_STEP_SUMMARY")
 
 
 def run_weekly(settings: Settings | None = None) -> dict[str, Any]:
@@ -313,6 +370,7 @@ def run_weekly(settings: Settings | None = None) -> dict[str, Any]:
         "steps": steps,
     }
     logger.info("pipeline weekly: summary=%s", summary)
+    _write_github_summary(summary)
 
     if any_failed:
         raise SystemExit(1)

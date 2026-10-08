@@ -99,21 +99,26 @@ on `pages.yml` picks it up automatically for changes under
 
 ## 6. Where to see logs
 
-`Actions` tab → click the workflow run → click a job (`update`, `build`,
-`deploy`, `test`) → expand a step. The `pipeline weekly` step logs each of
-its 8 sub-steps (`init_db`, `scrape_eop`, `scrape_sigma`,
-`scrape_nesebar_site`, `parse_budget`, `analyze`, `notify_pending`,
-`build_site`) with per-step timing and ok/FAILED status, plus a final JSON
-summary line — search the step's log for `pipeline weekly: summary=` to
-jump straight to it. A failed step is recorded but does not stop later
-steps from running; the job itself only fails (red ✗, non-zero exit) if at
-least one step failed.
+`Actions` tab → click the workflow run. The run's **summary page** shows a
+"Weekly pipeline" table with every sub-step (`init_db`, `scrape_eop`,
+`scrape_sigma`, `scrape_registry`, `scrape_declarations`,
+`scrape_nesebar_site`, `parse_budget`, `scrape_cadastre`, `analyze`,
+`notify_pending`, `build_site`), its ok/FAILED status, timing and counts
+(new/updated contracts, new reports, companies fetched, ...). The full log
+is under the `update` job → "Run weekly pipeline"; search it for
+`pipeline weekly: summary=`.
+
+A failed sub-step does not stop the others, and the data that did update is
+still committed and deployed. Afterwards the `status` job fails the run (red
+✗, and GitHub emails the repository owner) if any sub-step or the deploy
+failed, so a broken source never goes unnoticed.
 
 ## 7. Backfilling 2019–2025 locally
 
 The weekly pipeline only scrapes `nesebar_site` since the previous month's
 period (recent data) — that's deliberate, so a routine Monday run stays
-fast. To pull the *entire* historical archive (back to the site's earliest
+fast — plus any report link on reports.html whose URL is not stored yet,
+whatever month it covers, so late-published reports are still picked up. To pull the *entire* historical archive (back to the site's earliest
 available reports, March 2019) once, run this **locally**, not in CI:
 
 ```bash

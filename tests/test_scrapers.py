@@ -520,3 +520,35 @@ def test_nesebar_site_classifies_b3_and_non_ledger_but_downloads_them(tmp_path) 
     # PDFs are still not downloaded.
     assert "regUV2019.pdf" not in records
     assert not any(path.endswith(".pdf") for path in requested)
+
+
+def test_nesebar_site_picks_up_late_reports_for_older_months(tmp_path) -> None:
+    """The weekly run only looks at recent months, but a file whose URL was
+    never seen before is downloaded whatever month it covers -- so a report
+    the municipality posts late still reaches the database."""
+    from nessebar_budget.scrapers.nesebar_site import NesebarSiteScraper
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("reports.html"):
+            return httpx.Response(200, text=_NESEBAR_REPORTS_HTML)
+        return httpx.Response(200, content=b"file-bytes")
+
+    def run(**kwargs) -> set[str]:
+        scraper = NesebarSiteScraper(
+            cache_dir=tmp_path / str(len(kwargs)), delay=0.0,
+            client=httpx.Client(transport=httpx.MockTransport(handler)),
+        )
+        try:
+            return {r["url"].rsplit("/", 1)[-1] for r in scraper.run(**kwargs)}
+        finally:
+            scraper.close()
+
+    # Without known URLs, `since` alone keeps only the 2024 heading's files.
+    assert run(since="2024-01") == {"Budget_2018_5206.xlsx", "feb2024.xlsx"}
+    # With known URLs, the never-seen 2019 files are fetched too, and the
+    # already-stored one is not.
+    base = "https://www.nesebar.bg/03-2019/"
+    known = {base + "B1_2019_1_5206.xls"}
+    got = run(since="2024-01", known_urls=known)
+    assert "B3_2018_4_5206.xls" in got and "IB3_2018_4_5206_DES.xls" in got
+    assert "B1_2019_1_5206.xls" not in got

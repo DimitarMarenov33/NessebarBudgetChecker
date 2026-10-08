@@ -1718,7 +1718,9 @@ a.issue:hover .issue__chev { color: var(--text); }
   color: var(--text-2) !important;
 }
 .leaflet-control-attribution a { color: var(--text-body) !important; }
-.leaflet-popup-content-wrapper {
+/* Scoped under .leaflet-container: leaflet.css loads after this file and
+   its own `background: white; color: #333` would otherwise win. */
+.leaflet-container .leaflet-popup-content-wrapper {
   background: var(--surface-1);
   color: var(--text-body);
   border-radius: var(--radius-sm);
@@ -1726,7 +1728,8 @@ a.issue:hover .issue__chev { color: var(--text); }
 }
 .leaflet-popup-content { font-size: 13px; line-height: 1.5; margin: 10px 12px; }
 .leaflet-popup-content a { color: var(--accent-text); }
-.leaflet-popup-tip { background: var(--surface-1); }
+.leaflet-container .leaflet-popup-tip { background: var(--surface-1); }
+.leaflet-container .leaflet-popup-content strong { color: var(--text); }
 .leaflet-popup-close-button { color: var(--text-2) !important; }
 
 /* ------------------------------------------------------------------ toggle switch */
@@ -1815,3 +1818,36 @@ a.issue:hover .issue__chev { color: var(--text); }
   font-size: 13px;
   color: var(--text-2);
 }
+
+/* -- "Точни места" (exact-location map layer, settlement/contract/flag pages) -- */
+.legend-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  vertical-align: middle;
+  margin-right: 2px;
+}
+.legend-dot--obj { background: var(--accent); }
+.legend-dot--contract { background: var(--sev-warning); }
+.legend-dot--flag {
+  background: transparent;
+  border: 2px solid var(--sev-high);
+  width: 8px;
+  height: 8px;
+}
+.map-popup__source {
+  display: block;
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--text-3);
+}
+.loc-line {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-2);
+  margin-top: 4px;
+}
+.loc-line .code-chip { font-size: 12px; }

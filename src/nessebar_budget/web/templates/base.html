@@ -12,7 +12,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
-<link rel="stylesheet" href="{{ root }}static/style.css">
+<link rel="stylesheet" href="{{ root }}static/style.css?v={{ asset_version }}">
 {% block head %}{% endblock %}
 </head>
 <body>
@@ -90,7 +90,7 @@
     </div>
   </div>
 </footer>
-<script src="{{ root }}static/app.js" defer></script>
+<script src="{{ root }}static/app.js?v={{ asset_version }}" defer></script>
 {% block scripts %}{% endblock %}
 </body>
 </html>

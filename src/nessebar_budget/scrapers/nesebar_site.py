@@ -316,11 +316,16 @@ class NesebarSiteScraper(Scraper):
         since: str | None = None,
         limit: int | None = None,
         delay: float | None = None,
+        known_urls: set[str] | None = None,
     ) -> list[dict[str, Any]]:
         """List, filter, and download recognised budget-report files.
 
         `since` is an inclusive "YYYY-MM" floor on period; files with an
-        unknown period are skipped (we can't compare them). `limit` caps the
+        unknown period are skipped (we can't compare them). `known_urls`
+        (the URLs already stored as `BudgetReport` rows) widens that floor:
+        any listed file whose URL is not known yet is downloaded whatever its
+        period, so a report the municipality publishes late for an older
+        month is still picked up by the weekly run. `limit` caps the
         number of files downloaded (for testing). Already-cached files are
         skipped without any network request, so repeated runs are cheap.
 
@@ -336,7 +341,11 @@ class NesebarSiteScraper(Scraper):
         all_records = self.list_reports()
         candidates = [r for r in all_records if _should_download(r) and r["period"]]
         if since:
-            candidates = [r for r in candidates if r["period"] >= since]
+            known = known_urls or set()
+            candidates = [
+                r for r in candidates
+                if r["period"] >= since or (known_urls is not None and r["url"] not in known)
+            ]
         candidates.sort(key=lambda r: (r["period"], r["kind"], r["filename"]))
 
         results: list[dict[str, Any]] = []

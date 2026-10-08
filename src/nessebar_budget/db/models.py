@@ -4,7 +4,18 @@ from __future__ import annotations
 
 import datetime as dt
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import (
+    JSON,
+    Date,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -249,4 +260,58 @@ class Official(Base):
     declared_interests_json: Mapped[list | None] = mapped_column(JSON, default=None)
     #: 'text' | 'scanned' | 'missing' -- how much the PDF could be read.
     document_status: Mapped[str | None] = mapped_column(String(16), default=None)
+    fetched_at: Mapped[dt.datetime | None] = mapped_column(DateTime, default=None)
+
+
+class CadastreParcel(Base):
+    """One land parcel ("поземлен имот") from АГКК's official open-data
+    cadastral map (`scrapers.cadastre`), used to place a budget object or
+    contract at an exact point on the map ("Точни места") when its text
+    names this parcel's cadastral identifier or street.
+
+    Only the parcels this project's own data actually references are
+    stored (the parcels named by a cadastral identifier, plus the street
+    parcels of a street named in the text) -- not every parcel of every
+    settlement, to keep the committed `data/nessebar.db` small. Rows are
+    replaced per settlement (`ekatte`) on every `scrape cadastre` run.
+    """
+
+    __tablename__ = "cadastre_parcels"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+
+    #: KAIS identifier, e.g. "61056.502.526" -- always a 3-part land-parcel
+    #: id (this table never stores building/unit sub-identifiers).
+    cadnum: Mapped[str] = mapped_column(String(32), unique=True)
+    #: 5-digit EKATTE code of the parcel's own settlement (землище).
+    ekatte: Mapped[str] = mapped_column(String(8))
+    #: The cadastre's own settlement label, e.g. "с. Равда" (`ekattefn`).
+    settlement: Mapped[str | None] = mapped_column(Text, default=None)
+    area_m2: Mapped[float | None] = mapped_column(Float, default=None)
+    address: Mapped[str | None] = mapped_column(Text, default=None)
+    street: Mapped[str | None] = mapped_column(Text, default=None)
+    street_number: Mapped[str | None] = mapped_column(String(16), default=None)
+    #: Ownership type as recorded in the cadastre (e.g. "Общинска публична",
+    #: "Частна") -- may lag behind real-world changes; see methodology.html.
+    proptype: Mapped[str | None] = mapped_column(Text, default=None)
+    #: Designation/purpose type (`purptype`, e.g. "Урбанизирана").
+    purptype: Mapped[str | None] = mapped_column(Text, default=None)
+    #: Use type (`usetype`, e.g. "За второстепенна улица") -- this is how a
+    #: "street parcel" is recognised (see `scrapers.cadastre`).
+    usetype: Mapped[str | None] = mapped_column(Text, default=None)
+    quarter: Mapped[str | None] = mapped_column(String(16), default=None)
+
+    centroid_lat: Mapped[float | None] = mapped_column(Float, default=None)
+    centroid_lon: Mapped[float | None] = mapped_column(Float, default=None)
+    #: GeoJSON Polygon/MultiPolygon geometry, in lon/lat (EPSG:4326).
+    geometry_geojson: Mapped[dict | None] = mapped_column(JSON, default=None)
+
+    #: The АГКК open-data path this parcel was downloaded from (e.g.
+    #: "област Бургас/община Несебър/с. Равда (61056)/поземлени имоти.zip").
+    source_path: Mapped[str | None] = mapped_column(Text, default=None)
+    #: Date the zip was published, from the HTTP response's `Last-Modified`
+    #: header; АГКК's server sends no such header in practice (verified
+    #: 2026-10-08), so this is always the download date -- see
+    #: docs/sources/CADASTRE.md.
+    source_modified: Mapped[dt.date | None] = mapped_column(Date, default=None)
     fetched_at: Mapped[dt.datetime | None] = mapped_column(DateTime, default=None)

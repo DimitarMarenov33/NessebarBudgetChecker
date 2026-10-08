@@ -129,6 +129,8 @@ def test_required_pages_exist(built_site: Path) -> None:
         "settlements/index.html",
         "data/map.json",
         "data/settlements.csv",
+        "data/locations.geojson",
+        "data/location_parcels.geojson",
         "static/style.css",
         "static/app.js",
     ]:
@@ -379,7 +381,7 @@ def test_home_page_is_compact(built_site: Path) -> None:
     assert html.count('class="stat"') == 4
     assert "Къде отиват парите" in html
     assert "fonts.googleapis.com/css2?family=Inter" in html
-    assert 'href="static/style.css"' in html and 'src="static/app.js"' in html
+    assert 'href="static/style.css?v=' in html and 'src="static/app.js?v=' in html
 
 
 @requires_db
@@ -558,6 +560,58 @@ def test_text_size_adjust_is_set(built_site: Path) -> None:
     stacked phone tables reflow oddly after a user pinch-zoom elsewhere)."""
     css = (built_site / "static" / "style.css").read_text(encoding="utf-8")
     assert "-webkit-text-size-adjust: 100%" in css
+
+
+@requires_db
+def test_locations_geojson_is_valid_and_every_href_exists(built_site: Path) -> None:
+    """`data/locations.geojson` ("Точни места") -- one Point feature per
+    located budget object/contract -- must be well-formed GeoJSON, and every
+    feature's `href` must point at a page that actually exists in the built
+    site (the same contract/budget-period page the rest of the site links
+    to)."""
+    geojson = json.loads((built_site / "data" / "locations.geojson").read_text(encoding="utf-8"))
+    assert geojson["type"] == "FeatureCollection"
+    assert len(geojson["features"]) > 0, "expected at least one located item in the real DB"
+
+    seen_ids = set()
+    for feature in geojson["features"]:
+        assert feature["type"] == "Feature"
+        assert feature["geometry"]["type"] == "Point"
+        lon, lat = feature["geometry"]["coordinates"]
+        assert 27.0 < lon < 28.0, f"longitude {lon} outside Община Несебър"
+        assert 42.0 < lat < 43.0, f"latitude {lat} outside Община Несебър"
+
+        props = feature["properties"]
+        assert props["id"] not in seen_ids, f"duplicate location id {props['id']}"
+        seen_ids.add(props["id"])
+        assert props["kind"] in ("budget_object", "contract")
+        assert props["precision"] in ("parcel", "street")
+        if props["precision"] == "parcel":
+            assert props["cadnums"], "parcel-precision feature must list at least one cadnum"
+        else:
+            assert props["street"]
+
+        href = props["href"]
+        assert not href.startswith("/"), f"absolute href in locations.geojson: {href}"
+        assert (built_site / href).exists(), f"locations.geojson href does not exist: {href}"
+
+        for flag in props["flags"]:
+            flag_href = flag["href"]
+            assert not flag_href.startswith("/") and not flag_href.startswith("..")
+            assert (built_site / flag_href).exists(), f"flag href does not exist: {flag_href}"
+
+
+@requires_db
+def test_location_parcels_geojson_is_valid(built_site: Path) -> None:
+    geojson = json.loads(
+        (built_site / "data" / "location_parcels.geojson").read_text(encoding="utf-8")
+    )
+    assert geojson["type"] == "FeatureCollection"
+    assert len(geojson["features"]) > 0
+    for feature in geojson["features"]:
+        assert feature["geometry"]["type"] in ("Polygon", "MultiPolygon")
+        assert feature["properties"]["cadnum"]
+        assert feature["properties"]["location_ids"]
 
 
 @requires_db

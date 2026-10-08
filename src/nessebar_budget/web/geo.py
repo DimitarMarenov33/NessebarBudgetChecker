@@ -32,6 +32,8 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
+from nessebar_budget.web.locate import resolve, street_key
+
 WEB_DIR = Path(__file__).resolve().parent
 SETTLEMENTS_JSON_PATH = WEB_DIR / "data" / "settlements.json"
 PINS_CSV_RELATIVE = Path("data") / "locations" / "pins.csv"
@@ -76,6 +78,35 @@ SETTLEMENTS_BY_KEY: dict[str, dict[str, Any]] = {s["key"]: s for s in SETTLEMENT
 EKATTE_TO_KEY: dict[str, str] = {
     s["ekatte"]: s["key"] for s in SETTLEMENTS if s.get("ekatte")
 }
+
+#: Settlement key -> EKATTE, for the two resort areas that have no EKATTE of
+#: their own ("Точни места" needs a concrete 5-digit code to look up
+#: `CadastreParcel`/street data against) -- they sit in their enclosing
+#: town's землище (see `settlements.json`'s `ekatte_territory`).
+_RESORT_EKATTE: dict[str, str] = {"slanchev-bryag": "51500", "elenite": "11538"}
+
+
+def settlement_ekatte(key: str) -> str | None:
+    """The EKATTE code to use for cadastral lookups for settlement `key` --
+    the settlement's own EKATTE, or (for the two resort areas) their
+    enclosing town's, via `_RESORT_EKATTE`."""
+    settlement = SETTLEMENTS_BY_KEY.get(key)
+    if settlement and settlement.get("ekatte"):
+        return settlement["ekatte"]
+    return _RESORT_EKATTE.get(key)
+
+
+def ekatte_candidates(keys: list[str]) -> list[str]:
+    """`keys` (settlement keys, in priority order, e.g. from
+    `object_settlements`/`detect_settlements`) mapped to EKATTE codes,
+    deduplicated, order preserved -- the `ekatte_candidates` argument
+    `locate.resolve()` expects."""
+    out: list[str] = []
+    for key in keys:
+        ekatte = settlement_ekatte(key)
+        if ekatte and ekatte not in out:
+            out.append(ekatte)
+    return out
 
 
 def _alias_regex_fragment(alias: str) -> str:
@@ -621,3 +652,352 @@ def export_settlements_csv(map_data: dict[str, Any], path: Path) -> None:
                 "flags_count": "",
             }
         )
+
+
+# ---------------------------------------------------------------------------
+# "Точни места" -- exact-location resolution for budget objects/contracts
+# ---------------------------------------------------------------------------
+
+#: `usetype` substrings that mark a parcel as a "street parcel" for street
+#: matching (task-specified, verbatim): a parcel whose own `usetype` doesn't
+#: contain one of these is never matched by street name, even if it happens
+#: to carry a non-empty `strename` (e.g. a building parcel with a street
+#: address is not itself "the street").
+_STREET_USETYPE_SUBSTRINGS: tuple[str, ...] = ("улица", "алея", "площад", "път")
+
+
+def _is_street_parcel(usetype: str | None, street: str | None) -> bool:
+    if not street or not usetype:
+        return False
+    return any(s in usetype for s in _STREET_USETYPE_SUBSTRINGS)
+
+
+def _attr(row: Any, name: str) -> Any:
+    if isinstance(row, dict):
+        return row.get(name)
+    return getattr(row, name, None)
+
+
+#: `CadastreParcel` columns copied into the plain dict `locate.resolve()`
+#: works with. Accepts either ORM rows (production) or plain dicts with the
+#: same keys (tests) -- see `_attr`.
+_PARCEL_FIELDS: tuple[str, ...] = (
+    "cadnum", "ekatte", "settlement", "area_m2", "address", "street",
+    "street_number", "proptype", "purptype", "usetype", "quarter",
+    "centroid_lat", "centroid_lon", "geometry_geojson", "source_path",
+    "source_modified",
+)
+
+
+def _parcel_to_dict(row: Any) -> dict[str, Any]:
+    return {field: _attr(row, field) for field in _PARCEL_FIELDS}
+
+
+def _build_street_index(
+    parcels: list[dict[str, Any]],
+) -> dict[str, dict[str, list[dict[str, Any]]]]:
+    index: dict[str, dict[str, list[dict[str, Any]]]] = defaultdict(lambda: defaultdict(list))
+    for p in parcels:
+        if not _is_street_parcel(p.get("usetype"), p.get("street")):
+            continue
+        key = street_key(p.get("street"))
+        if not key:
+            continue
+        index[p["ekatte"]][key].append(p)
+    return index
+
+
+def _location_id(kind: str, key: str) -> str:
+    import hashlib
+
+    digest = hashlib.sha1(key.encode("utf-8")).hexdigest()[:10]
+    return f"{kind}-{digest}"
+
+
+def _source_label(parcels: list[dict[str, Any]]) -> str | None:
+    if not parcels:
+        return None
+    p = parcels[0]
+    path = p.get("source_path")
+    if not path:
+        return None
+    modified = p.get("source_modified")
+    modified_str = modified.isoformat() if hasattr(modified, "isoformat") else (modified or "?")
+    return f"АГКК отворени данни, {path}, версия {modified_str}"
+
+
+def _budget_object_groups(budget: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Every distinct capital-programme object (consolidated `Общо` unit,
+    row type `object`), keyed on its own name, with its plan/spent summed
+    per year (same representative-period-per-year rule as
+    `build_map_data`/`_representative_periods`) and the latest period it
+    appears in (used for its `href`)."""
+    periods: list[str] = budget["periods"]
+    by_period: dict[str, dict[str, Any]] = budget["by_period"]
+    rep_periods = _representative_periods(periods)
+
+    groups: dict[str, dict[str, Any]] = {}
+    for year, (period, _used_fallback) in sorted(rep_periods.items()):
+        period_data = by_period.get(period)
+        if not period_data:
+            continue
+        for obj in period_data["objects"]:
+            name = obj["object_name"] or ""
+            if not name:
+                continue
+            group = groups.setdefault(name, {"name": name, "years": {}, "latest_period": period})
+            group["years"][year] = {
+                "plan": obj["plan_current"] or 0.0,
+                "spent": obj["spent_period"] or 0.0,
+            }
+            group["latest_period"] = max(group["latest_period"], period)
+    return groups
+
+
+def _flag_summary(flag_view: dict[str, Any]) -> dict[str, Any]:
+    # `permalink_href` is built relative to a first-level page (e.g.
+    # "../flags/1.html" -- see `build.py`'s `_flag_view`/`site_path`); every
+    # `href` in a location feature (this module's own `budget/<period>.html`/
+    # `contracts/<id>.html`) is instead already site-root-relative, so the
+    # leading "../" is stripped here for consistency -- callers (map.html's
+    # script, every template) always combine these with their *own* `root`.
+    href = flag_view.get("permalink_href")
+    if href:
+        href = href.removeprefix("../")
+    return {
+        "id": flag_view.get("id"),
+        "rule_label": flag_view.get("rule_label"),
+        "tier": flag_view.get("tier_key") or flag_view.get("tier"),
+        "href": href,
+    }
+
+
+def _build_feature(
+    location_id: str,
+    kind: str,
+    title: str | None,
+    settlement_key: str | None,
+    loc: Any,
+    amounts: dict[str, Any],
+    href: str,
+    flag_views: list[dict[str, Any]],
+    year: int | None = None,
+) -> dict[str, Any]:
+    rep_parcel = loc.parcels[0] if loc.parcels else None
+    settlement = SETTLEMENTS_BY_KEY[settlement_key]["name"] if settlement_key else None
+    if kind == "contract":
+        display_amount = amounts.get("value_eur") or 0.0
+    else:
+        display_amount = sum(b["spent"] for b in amounts.values())
+    return {
+        "id": location_id,
+        "kind": kind,
+        "title": title,
+        "settlement": settlement,
+        "settlement_key": settlement_key,
+        "precision": loc.precision,
+        "cadnums": list(loc.ids) if loc.precision == "parcel" else None,
+        "street": loc.street if loc.precision == "street" else None,
+        "address": rep_parcel.get("address") if rep_parcel else None,
+        "area_m2": rep_parcel.get("area_m2") if rep_parcel else None,
+        "proptype": rep_parcel.get("proptype") if rep_parcel else None,
+        "usetype": rep_parcel.get("usetype") if rep_parcel else None,
+        "amounts": amounts,
+        "display_amount": display_amount,
+        #: Contract year (Sofia time, same value `contracts/index.html`
+        #: groups by) -- used by map.html's year filter for a contract
+        #: marker; `None` for a budget object, which instead has one key per
+        #: year directly inside `amounts`.
+        "year": year,
+        "href": href,
+        "flags": [_flag_summary(f) for f in flag_views],
+        "unresolved": list(loc.unresolved),
+        "source": _source_label(loc.parcels),
+        "point": loc.point,
+        "parcels": loc.parcels,
+    }
+
+
+def build_locations(
+    contracts_view_list: list[Any],
+    flags: list[dict[str, Any]],
+    budget: dict[str, Any],
+    cadastre_rows: list[Any],
+) -> dict[str, Any]:
+    """Resolve every distinct budget object and every `eop` contract to an
+    exact cadastral parcel or street, using the already-loaded
+    `CadastreParcel` rows (`cadastre_rows` -- ORM rows or plain dicts with
+    the same columns, see `_parcel_to_dict`).
+
+    Returns `{"features": [...], "parcels_used": {cadnum: {"parcel":,
+    "location_ids": [...]}}, "by_object_name": {name: location_id},
+    "by_contract_id": {contract.id: location_id}}`. `features` is one dict
+    per *located* item (budget objects/contracts that `locate.resolve()`
+    returned None for simply aren't in it) -- see `export_locations_geojson`
+    for the GeoJSON shape this is turned into, and `_build_feature` for the
+    per-feature fields.
+    """
+    parcels = [_parcel_to_dict(row) for row in cadastre_rows]
+    parcels_by_cadnum = {p["cadnum"]: p for p in parcels if p.get("cadnum")}
+    street_index = _build_street_index(parcels)
+
+    features: list[dict[str, Any]] = []
+    parcels_used: dict[str, dict[str, Any]] = {}
+    by_object_name: dict[str, str] = {}
+    by_contract_id: dict[int, str] = {}
+
+    def register_parcels(used_parcels: list[dict[str, Any]], location_id: str) -> None:
+        for p in used_parcels:
+            cadnum = p.get("cadnum")
+            if not cadnum:
+                continue
+            entry = parcels_used.setdefault(cadnum, {"parcel": p, "location_ids": []})
+            if location_id not in entry["location_ids"]:
+                entry["location_ids"].append(location_id)
+
+    object_groups = _budget_object_groups(budget)
+    for name, group in sorted(object_groups.items()):
+        keys = object_settlements(name)
+        candidates = ekatte_candidates(keys)
+        loc = resolve(name, candidates, parcels_by_cadnum, street_index)
+        if loc is None:
+            continue
+        location_id = _location_id("obj", name)
+        amounts = {
+            str(year): {"plan": bucket["plan"], "spent": bucket["spent"]}
+            for year, bucket in sorted(group["years"].items())
+        }
+        obj_flags = [
+            f
+            for f in flags or []
+            if f.get("subject_type") == "budget_object"
+            and (f.get("details") or {}).get("object_name") == name
+        ]
+        register_parcels(loc.parcels, location_id)
+        by_object_name[name] = location_id
+        features.append(
+            _build_feature(
+                location_id,
+                "budget_object",
+                name,
+                keys[0] if keys else None,
+                loc,
+                amounts,
+                f"budget/{group['latest_period']}.html",
+                obj_flags,
+            )
+        )
+
+    for c in contracts_view_list:
+        keys = detect_settlements(getattr(c, "title", None))
+        candidates = ekatte_candidates(keys)
+        loc = resolve(getattr(c, "title", None), candidates, parcels_by_cadnum, street_index)
+        if loc is None:
+            continue
+        location_id = f"contract-{c.id}"
+        amounts = {
+            "value_eur": getattr(c, "display_value_eur", None),
+            "contract_date": getattr(c, "contract_date", None),
+            "contractor": getattr(c, "contractor_name", None),
+        }
+        register_parcels(loc.parcels, location_id)
+        by_contract_id[c.id] = location_id
+        features.append(
+            _build_feature(
+                location_id,
+                "contract",
+                getattr(c, "title", None),
+                keys[0] if keys else None,
+                loc,
+                amounts,
+                f"contracts/{c.source_id}.html",
+                getattr(c, "flags", None) or [],
+                year=getattr(c, "year", None),
+            )
+        )
+
+    return {
+        "features": features,
+        "parcels_used": parcels_used,
+        "by_object_name": by_object_name,
+        "by_contract_id": by_contract_id,
+        "total_budget_objects": len(object_groups),
+    }
+
+
+def export_locations_geojson(locations: dict[str, Any]) -> dict[str, Any]:
+    """`locations["features"]` (from `build_locations`) as a GeoJSON
+    FeatureCollection of Point features -- `site/data/locations.geojson`."""
+    features = []
+    for f in locations["features"]:
+        point = f.get("point")
+        if point is None:
+            continue
+        amounts = f["amounts"]
+        if f["kind"] == "contract":
+            contract_date = amounts.get("contract_date")
+            amounts = {
+                "value_eur": round(amounts["value_eur"], 2) if amounts.get("value_eur") is not None else None,
+                "contract_date": contract_date.isoformat() if hasattr(contract_date, "isoformat") else contract_date,
+                "contractor": amounts.get("contractor"),
+            }
+        else:
+            amounts = {
+                year: {"plan": round(b["plan"], 2), "spent": round(b["spent"], 2)}
+                for year, b in amounts.items()
+            }
+        features.append(
+            {
+                "type": "Feature",
+                "geometry": {"type": "Point", "coordinates": [round(point[0], 6), round(point[1], 6)]},
+                "properties": {
+                    "id": f["id"],
+                    "kind": f["kind"],
+                    "title": f["title"],
+                    "settlement": f["settlement"],
+                    "settlement_key": f["settlement_key"],
+                    "precision": f["precision"],
+                    "cadnums": f["cadnums"],
+                    "street": f["street"],
+                    "address": f["address"],
+                    "area_m2": round(f["area_m2"], 2) if f.get("area_m2") is not None else None,
+                    "proptype": f["proptype"],
+                    "usetype": f["usetype"],
+                    "amounts": amounts,
+                    "display_amount": round(f["display_amount"], 2) if f.get("display_amount") is not None else None,
+                    "year": f.get("year"),
+                    "href": f["href"],
+                    "flags": f["flags"],
+                    "unresolved": f["unresolved"],
+                    "source": f["source"],
+                },
+            }
+        )
+    return {"type": "FeatureCollection", "features": features}
+
+
+def export_location_parcels_geojson(locations: dict[str, Any]) -> dict[str, Any]:
+    """The parcel polygons used by any located item -- `site/data/
+    location_parcels.geojson` -- for drawing outlines on the map."""
+    features = []
+    for cadnum, entry in sorted(locations["parcels_used"].items()):
+        parcel = entry["parcel"]
+        geometry = parcel.get("geometry_geojson")
+        if not geometry:
+            continue
+        features.append(
+            {
+                "type": "Feature",
+                "geometry": geometry,
+                "properties": {
+                    "cadnum": cadnum,
+                    "location_ids": entry["location_ids"],
+                    "address": parcel.get("address"),
+                    "street": parcel.get("street"),
+                    "proptype": parcel.get("proptype"),
+                    "usetype": parcel.get("usetype"),
+                    "area_m2": round(parcel["area_m2"], 2) if parcel.get("area_m2") is not None else None,
+                },
+            }
+        )
+    return {"type": "FeatureCollection", "features": features}
