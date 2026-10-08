@@ -558,3 +558,15 @@ def test_text_size_adjust_is_set(built_site: Path) -> None:
     stacked phone tables reflow oddly after a user pinch-zoom elsewhere)."""
     css = (built_site / "static" / "style.css").read_text(encoding="utf-8")
     assert "-webkit-text-size-adjust: 100%" in css
+
+
+@requires_db
+def test_no_ai_disclaimer_is_on_every_key_page(built_site: Path) -> None:
+    methodology = (built_site / "methodology.html").read_text(encoding="utf-8")
+    assert 'id="no-ai"' in methodology
+    assert "Без изкуствен интелект" in methodology
+    index = (built_site / "index.html").read_text(encoding="utf-8")
+    assert "methodology.html#no-ai" in index  # hero trust line + footer
+    flag_pages = [p for p in (built_site / "flags").glob("*.html") if p.name != "index.html"]
+    assert flag_pages
+    assert "без изкуствен интелект" in flag_pages[0].read_text(encoding="utf-8")

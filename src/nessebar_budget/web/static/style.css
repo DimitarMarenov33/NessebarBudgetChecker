@@ -1798,3 +1798,20 @@ a.issue:hover .issue__chev { color: var(--text); }
   .table--company-people td:nth-child(3) { grid-area: share; }
   .table--company-people td:nth-child(4) { grid-area: eik; font-size: 12px; }
 }
+
+/* -- "Без изкуствен интелект" trust line (home hero) and note (flag pages) -- */
+.trust-line {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  margin-top: 14px;
+  font-size: 13px;
+  color: var(--text-2);
+  text-decoration: none;
+}
+.trust-line:hover { color: var(--text); }
+.ai-note {
+  margin-top: 12px;
+  font-size: 13px;
+  color: var(--text-2);
+}

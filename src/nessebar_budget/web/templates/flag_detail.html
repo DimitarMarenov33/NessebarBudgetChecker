@@ -16,6 +16,8 @@
     {% if f.explanation and f.explanation != f.message %}
     <p class="page-head__sub">{{ f.explanation }}</p>
     {% endif %}
+    <p class="ai-note">Изчислено автоматично от правилото „{{ f.rule_label }}" с фиксирани прагове върху
+    официални данни — без изкуствен интелект. <a href="{{ root }}methodology.html#no-ai">Как работи</a></p>
   </section>
 
   {% if f.law_ref %}
