@@ -16,12 +16,19 @@ from nessebar_budget.analysis.engine import run_full_analysis
 from nessebar_budget.config import get_settings
 from nessebar_budget.db.budget_repo import parse_budget_reports, upsert_budget_report
 from nessebar_budget.db.models import Flag
-from nessebar_budget.db.repo import upsert_procurements
+from nessebar_budget.db.repo import (
+    distinct_contractor_eiks,
+    upsert_company,
+    upsert_official,
+    upsert_procurements,
+)
 from nessebar_budget.db.session import get_session, init_db
 from nessebar_budget.notify.telegram import send_flags_notification
+from nessebar_budget.scrapers.declarations import DeclarationsScraper
 from nessebar_budget.scrapers.eop import EopScraper
 from nessebar_budget.scrapers.minfin import MinfinScraper
 from nessebar_budget.scrapers.nesebar_site import NesebarSiteScraper
+from nessebar_budget.scrapers.registry import RegistryScraper
 from nessebar_budget.scrapers.sigma import SigmaScraper
 
 logger = logging.getLogger(__name__)
@@ -36,7 +43,7 @@ STUB_SCRAPERS = {
     "minfin": MinfinScraper,
 }
 
-ALL_SOURCES = ["eop", "sigma", "nesebar_site", *STUB_SCRAPERS]
+ALL_SOURCES = ["eop", "sigma", "nesebar_site", "declarations", "registry", *STUB_SCRAPERS]
 
 
 @app.command("init-db")
@@ -52,22 +59,25 @@ def scrape_command(
     limit: int = typer.Option(
         None,
         "--limit",
-        help="Cap the number of paginated list pages fetched (eop) or files downloaded "
-        "(nesebar_site); for testing.",
+        help="Cap the number of paginated list pages fetched (eop), files downloaded "
+        "(nesebar_site), officials processed (declarations), or ЕИКs looked up "
+        "(registry); for testing.",
     ),
     since: str = typer.Option(
         None, "--since", help="nesebar_site only: only fetch reports for period >= YYYY-MM."
     ),
     delay: float = typer.Option(
-        None, "--delay", help="nesebar_site only: seconds between requests (default 10, "
-        "per robots.txt Crawl-delay)."
+        None, "--delay", help="nesebar_site/declarations/registry only: seconds between "
+        "requests (default 10 for nesebar_site per robots.txt Crawl-delay, 2 for "
+        "declarations, 2 for registry)."
     ),
 ) -> None:
-    """Fetch records from SOURCE (one of: eop, sigma, nesebar_site, minfin).
+    """Fetch records from SOURCE (one of: eop, sigma, nesebar_site, declarations,
+    registry, minfin).
 
-    `eop`, `sigma`, and `nesebar_site` fetch live records and upsert them
-    into the database, printing a summary. `minfin` is still an
-    unimplemented stub.
+    `eop`, `sigma`, `nesebar_site`, `declarations`, and `registry` fetch live
+    records and upsert them into the database, printing a summary. `minfin`
+    is still an unimplemented stub.
     """
     if source not in ALL_SOURCES:
         console.print(f"[red]Unknown source {source!r}. Choices: {', '.join(ALL_SOURCES)}[/red]")
@@ -89,6 +99,52 @@ def scrape_command(
             session.commit()
 
         console.print(f"[green]nesebar_site[/green]: fetched {len(records)} report file(s).")
+        return
+
+    if source == "declarations":
+        if since is not None:
+            console.print("[yellow]--since is ignored for source 'declarations'.[/yellow]")
+        scraper = DeclarationsScraper()
+        init_db()
+        try:
+            records = scraper.run(limit=limit, delay=delay if delay is not None else scraper.delay)
+        finally:
+            scraper.close()
+
+        with get_session() as session:
+            for record in records:
+                upsert_official(session, record)
+            session.commit()
+
+        console.print(f"[green]declarations[/green]: fetched {len(records)} official(s).")
+        return
+
+    if source == "registry":
+        if since is not None:
+            console.print("[yellow]--since is ignored for source 'registry'.[/yellow]")
+        init_db()
+        with get_session() as session:
+            eiks = distinct_contractor_eiks(session)
+        if limit is not None:
+            eiks = eiks[:limit]
+
+        scraper = RegistryScraper(delay=delay if delay is not None else 2.0)
+        try:
+            records = scraper.fetch(eiks)
+        finally:
+            scraper.close()
+
+        with get_session() as session:
+            for record in records:
+                upsert_company(session, record)
+            session.commit()
+
+        console.print(
+            f"[green]registry[/green]: {len(eiks)} ЕИК(s), fetched {len(records)}, "
+            f"failed {len(scraper.failures)}."
+        )
+        for eik, reason in scraper.failures:
+            console.print(f"[red]FAILED[/red] {eik}: {reason}")
         return
 
     if source in STUB_SCRAPERS:

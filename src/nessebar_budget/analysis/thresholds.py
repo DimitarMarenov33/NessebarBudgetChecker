@@ -10,8 +10,9 @@ in `docs/law/` (`grep "^Чл\\. N\\."` in zop.txt / zpf.txt / zmsma.txt / zdoi.t
 lex.bg, extracted 2026-10-06; see `docs/law/INDEX.md`). The quoted fragment
 is the key sentence, verbatim. Two sources are cited but are NOT in
 `docs/law/`: the Наказателен кодекс (чл. 248а, cited by the project brief for
-EU-funds fraud) and the Закон за счетоводството (cited without an article
-number). They are marked as such wherever they appear.
+EU-funds fraud), and the current
+anti-corruption law (see the ЗПК note at the end of this docstring), cited
+without article numbers. They are marked as such wherever they appear.
 
 ЗОП (Закон за обществените поръчки, zop.txt)
 ---------------------------------------------
@@ -68,6 +69,12 @@ number). They are marked as such wherever they appear.
   поръчки и рамковите споразумения, както и приложенията към тях".
 - чл. 48, ал. 1, т. 1 -- technical specifications "позволяват точно
   определяне на параметрите на предмета на поръчката".
+- чл. 54, ал. 1, т. 7 -- the contracting authority excludes a bidder when
+  "е налице конфликт на интереси, който не може да бъде отстранен"; ал. 2
+  extends this to "лицата, които представляват участника ... и за членовете
+  на неговите управителни и надзорни органи" (used by `related_party`:
+  a current manager/partner/owner/board member of the contractor sharing a
+  councillor/mayor's full name, or named in their declared interests).
 - чл. 74, ал. 1 "Минималният срок за получаване на оферти в открита
   процедура е 30 дни от датата на изпращане на обявлението"; ал. 2 and ал. 4
   allow shortening, "не по-кратък от 15 дни" (prior-information notice /
@@ -148,6 +155,25 @@ number). They are marked as such wherever they appear.
 - чл. 22, ал. 2 "Актовете на общинския съвет се разгласяват на населението на
   общината в срока по ал. 1 [7 дни] ... чрез интернет страницата на общинския
   съвет или на общината".
+- чл. 37, ал. 1 "Общинският съветник не може да участва при вземане на
+  решения, когато се отнасят до негови имуществени интереси или до интереси
+  на съпруг и роднини по права линия и по съребрена линия до четвърта степен
+  включително и по сватовство до втора степен включително." Used by
+  `related_party` only when the matched official's `role == "councillor"`
+  (ал. 2 of the same article carves out budget/pay decisions specifically --
+  irrelevant here, which concerns a contractor relationship, not the
+  council's own budget).
+
+Антикорупционно законодателство (виж `docs/law/INDEX.md`, "Критична
+находка")
+-------------------------------------------------------------------------
+The 2023 "Закон за противодействие на корупцията" (`docs/law/zpk.txt`) was
+**repealed** 2026-02-14; a new law (ДВ бр. 51/2026) is in force, but its full
+text could not be fetched (see INDEX.md), so no article number from either
+version is cited anywhere in this project. Where this project's declarations
+register is discussed, it is referred to only as "Закон за противодействие
+на корупцията (нов, ДВ бр. 51/2026) -- декларации за интереси и конфликт на
+интереси", with no article number.
 
 BGN/EUR: ЗОП still states its thresholds in leva. Bulgaria's euro adoption
 carried over the long-standing currency-board peg as the fixed conversion
@@ -367,6 +393,46 @@ class Thresholds(BaseSettings):
     annual_report_due_month: int = 3
     annual_report_due_day: int = 31
 
+    # --- related_party --- ЗОП чл. 54, ал. 1, т. 7 и ал. 2; ЗМСМА чл. 37, ал. 1
+    #: Severity escalates to `high` regardless of match basis once the
+    #: contractor's total contracted value reaches this amount; a
+    #: declaration-based match (vs. a bare name match) is always `high`.
+    related_party_high_eur: float = 100_000.0
+
+    # --- person_concentration --- ЗОП чл. 2, ал. 1, т. 1-2 (равнопоставеност, конкуренция)
+    #: One person behind 2+ distinct contractor companies that TOGETHER
+    #: cleared either bound counts as concentration.
+    person_concentration_min_contracts: int = 3
+    person_concentration_min_eur: float = 200_000.0
+    #: Severity escalates to `high` above either bound.
+    person_concentration_high_contracts: int = 6
+    person_concentration_high_eur: float = 500_000.0
+
+    # --- young_company --- ЗОП чл. 2, ал. 1, т. 1-2 (равнопоставеност, конкуренция)
+    #: "Within 12 months of registration" and "within 6 months" (~365/~183
+    #: calendar days -- `Company.registered_at` carries no finer precision
+    #: than the registry's own first-entry date).
+    young_company_window_days: int = 365
+    young_company_high_window_days: int = 183
+    young_company_min_eur: float = 50_000.0
+    young_company_high_eur: float = 200_000.0
+
+    # --- company_status --- ЗОП чл. 2, ал. 1 и чл. 55, ал. 1, т. 1; ЗСч чл. 38, ал. 1,
+    # т. 1 (ГФО до 30 септември на следващата година) and ал. 9 (exemptions) --
+    # verified in docs/law/zsch.txt.
+    #: "Holding a contract signed in the last N years" for the
+    #: liquidation/insolvency/deregistered branch.
+    company_status_recent_years: int = 3
+    #: The stale-ГФО branch only looks at companies with at least this much
+    #: contracted value (a tiny supplier's bookkeeping lag is not newsworthy).
+    company_status_min_eur_for_report: float = 100_000.0
+    #: How many years older than the latest contract year a missing/stale
+    #: annual statement (ГФО) has to be to count as "stale".
+    company_status_report_lag_years: int = 2
+
+    # --- activity_mismatch --- ЗОП чл. 2, ал. 1, т. 3 (пропорционалност)
+    activity_mismatch_min_eur: float = 50_000.0
+
     @property
     def direct_award_threshold_eur(self) -> float:
         return bgn_to_eur(self.direct_award_threshold_bgn)
@@ -375,3 +441,68 @@ class Thresholds(BaseSettings):
 def get_thresholds() -> Thresholds:
     """Return a freshly loaded Thresholds instance (reads env/`.env` each call)."""
     return Thresholds()
+
+
+# ---------------------------------------------------------------------------
+# activity_mismatch: NKID (Company.nkid_code) <-> CPV (Procurement.cpv_code)
+# ---------------------------------------------------------------------------
+#
+# Not Settings fields (a mapping of tuples isn't a sensible env-var override
+# surface) -- plain module constants, same spirit as `_common.py`'s
+# `PROCEDURE_REGIME_TIER`/`EXCEPTIONAL_PROCEDURES`.
+
+#: Positive mapping, for documentation/completeness only: NKID division(s)
+#: (НКИД 2008, first 2 digits) -> the CPV divisions (first 2 digits) that
+#: activity is ordinarily compatible with. NOT used for flagging directly --
+#: see `ACTIVITY_INCOMPATIBLE_PAIRS` below, which is the actual flagging
+#: table. Most NKID/CPV combinations are simply not encoded here at all
+#: (e.g. a general trading company winning almost anything), which is
+#: exactly why "absent from this table" must never itself be a reason to
+#: flag -- it would mean "we didn't bother to think about this pair", not
+#: "this pair is suspicious".
+ACTIVITY_NKID_CPV_COMPATIBLE: dict[tuple[str, ...], tuple[str, ...]] = {
+    ("41", "42", "43"): ("45",),  # строителство <-> CPV 45 (строителни работи)
+    ("71",): ("71",),  # архитектурни/инженерни услуги <-> CPV 71
+    ("49", "50", "51", "52", "53"): ("60", "63"),  # транспорт/спедиция <-> CPV 60/63
+    ("55", "56"): ("55",),  # хотелиерство/ресторантьорство <-> CPV 55
+    ("38",): ("90",),  # събиране/третиране на отпадъци <-> CPV 90
+    ("46", "47"): tuple(f"{n:02d}" for n in range(3, 45)),  # търговия <-> доставки CPV 03-44
+    ("62", "63"): ("48", "72"),  # ИТ услуги <-> CPV 48 (софтуер)/72 (ИТ услуги)
+    ("80",): ("80",),  # охранителна дейност <-> CPV 80 (обучение/охрана)
+}
+
+#: Explicit, hand-picked incompatible pairs -- the only combinations
+#: `activity_mismatch` ever flags: (NKID divisions that this activity
+#: clearly does NOT cover, CPV division of the contract, Bulgarian
+#: description of the mismatch for the flag's message). Each pair is a
+#: judgment call, kept deliberately small and conservative: a service-only
+#: company (hospitality, real estate, finance, households-as-employers)
+#: winning a *works* or *engineering* contract has essentially no innocent
+#: reading tied to its *declared* activity (it may still be innocent for
+#: other reasons, e.g. a holding structure -- hence tier "signal", not
+#: "violation").
+ACTIVITY_INCOMPATIBLE_PAIRS: tuple[tuple[tuple[str, ...], str, str], ...] = (
+    (
+        ("55", "56", "68"),
+        "45",
+        "хотелиерство, ресторантьорство или сделки с недвижими имоти, а поръчката е за строителство",
+    ),
+    (
+        ("55", "56", "68"),
+        "71",
+        (
+            "хотелиерство, ресторантьорство или сделки с недвижими имоти, а поръчката е за "
+            "архитектурни/инженерни услуги"
+        ),
+    ),
+    (
+        ("64", "65", "66"),
+        "45",
+        "финансови или застрахователни услуги, а поръчката е за строителство",
+    ),
+    (
+        ("97", "98"),
+        "45",
+        "дейност на домакинства като работодатели на домашен персонал, а поръчката е за строителство",
+    ),
+)

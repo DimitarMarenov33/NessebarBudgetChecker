@@ -25,6 +25,79 @@
     </div>
   </div>
 
+  {% for card in co.tr_cards %}
+  <section class="block company-card">
+    <h2 class="block__title">Търговски регистър{% if co.tr_cards | length > 1 %} — {{ card.name }}{% endif %}</h2>
+    <dl class="facts">
+      <div class="facts__row">
+        <dt>Наименование</dt>
+        <dd>{{ card.name }}{% if card.legal_form %} <span class="muted">· {{ card.legal_form }}</span>{% endif %}</dd>
+      </div>
+      <div class="facts__row">
+        <dt>Статус</dt>
+        <dd>{{ m.chip(card.status_label, card.status_dot) }}</dd>
+      </div>
+      <div class="facts__row">
+        <dt>Седалище</dt>
+        <dd>{{ card.seat_address or "—" }}</dd>
+      </div>
+      <div class="facts__row">
+        <dt>Основна дейност</dt>
+        <dd>
+          {% if card.nkid_code %}
+          <span class="code-chip">{{ card.nkid_code }}</span>{% if card.nkid_label %} {{ card.nkid_label }}{% endif %}
+          {% else %}
+          {{ card.activity_short or "—" }}
+          {% if card.activity_full %}
+          <details class="inline-more"><summary>още</summary><p>{{ card.activity_full }}</p></details>
+          {% endif %}
+          {% endif %}
+        </dd>
+      </div>
+      <div class="facts__row">
+        <dt>Капитал</dt>
+        <dd>{% if card.capital_eur is not none %}{{ card.capital_eur | eur }}{% else %}<span class="muted">—</span>{% endif %}</dd>
+      </div>
+      <div class="facts__row">
+        <dt>{{ card.registered_label }}</dt>
+        <dd>{{ card.registered_at | bgdate if card.registered_at else "—" }}</dd>
+      </div>
+      <div class="facts__row">
+        <dt>Годишен финансов отчет (ГФО)</dt>
+        <dd>
+          {% if card.last_annual_report_year %}
+          {{ card.last_annual_report_year }}
+          {% if card.report_stale %}<br><span class="is-over">{{ tr_stale_report_note }}</span>{% endif %}
+          {% else %}
+          <span class="muted">няма обявен</span>
+          {% endif %}
+        </dd>
+      </div>
+    </dl>
+
+    {% if card.people %}
+    <div class="table-wrap">
+    <table class="table table--company-people table--stack">
+      <thead><tr><th>Лице</th><th>Роля</th><th>Дял</th><th>ЕИК</th></tr></thead>
+      <tbody>
+      {% for p in card.people %}
+      <tr>
+        <td>{{ p.name }}{% if p.also_at %}<br><span class="sub">също в: {% for slug, label in p.also_at %}<a href="{{ root }}contractors/{{ slug }}.html">{{ label }}</a>{% if not loop.last %}, {% endif %}{% endfor %}</span>{% endif %}</td>
+        <td>{{ m.cell_label("Роля") }}{{ p.role_label }}</td>
+        <td>{{ m.cell_label("Дял") }}{{ p.share_text or "—" }}</td>
+        <td>{{ m.cell_label("ЕИК") }}{{ p.person_eik or "—" }}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% if card.has_cross_links %}<p class="footnote">{{ tr_namesake_note }}</p>{% endif %}
+    {% endif %}
+
+    <p class="footnote">Източник: <a href="{{ card.source_url }}" target="_blank" rel="noopener">Търговски регистър, Агенция по вписванията</a> — данни към {{ card.fetched_at | bgdate }}.</p>
+  </section>
+  {% endfor %}
+
   <section class="block">
     <h2 class="block__title">Договори</h2>
     <div class="table-wrap">

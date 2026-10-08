@@ -143,3 +143,110 @@ class Flag(Base):
     #: Set once the rule stops producing this subject; cleared again if it reappears.
     resolved_at: Mapped[dt.datetime | None] = mapped_column(DateTime, default=None)
     notified_at: Mapped[dt.datetime | None] = mapped_column(DateTime, default=None)
+
+
+class Company(Base):
+    """A contractor's current state in the Trade Register (Търговски регистър),
+    fetched by ЕИК from the Registry Agency portal's JSON backend
+    (`scrapers.registry`). One row per ЕИК; refreshed in place."""
+
+    __tablename__ = "companies"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    eik: Mapped[str] = mapped_column(String(32), unique=True)
+    name: Mapped[str | None] = mapped_column(Text, default=None)
+    #: As printed by the registry, e.g. 'Дружество с ограничена отговорност'.
+    legal_form: Mapped[str | None] = mapped_column(String(128), default=None)
+    #: 'active' | 'liquidation' | 'insolvency' | 'deregistered' | 'unknown'
+    status: Mapped[str | None] = mapped_column(String(32), default=None)
+    seat_address: Mapped[str | None] = mapped_column(Text, default=None)
+    activity: Mapped[str | None] = mapped_column(Text, default=None)
+    nkid_code: Mapped[str | None] = mapped_column(String(16), default=None)
+    nkid_label: Mapped[str | None] = mapped_column(Text, default=None)
+    capital_eur: Mapped[float | None] = mapped_column(Numeric(16, 2), default=None)
+    #: First registry entry for this deed (field 00010's earliest action date).
+    registered_at: Mapped[dt.datetime | None] = mapped_column(DateTime, default=None)
+    #: Latest financial year with an announced annual financial statement (ГФО).
+    last_annual_report_year: Mapped[int | None] = mapped_column(Integer, default=None)
+    #: Human-readable deed page on portal.registryagency.bg.
+    source_url: Mapped[str | None] = mapped_column(Text, default=None)
+    fetched_at: Mapped[dt.datetime | None] = mapped_column(DateTime, default=None)
+    #: Slim snapshot: {fieldIdent: {"text", "entry_date", "action_date"}, ...}.
+    raw_json: Mapped[dict | None] = mapped_column(JSON, default=None)
+
+
+class CompanyPerson(Base):
+    """A natural or legal person named in a company's registry deed
+    (manager, partner, sole owner, board member, representative)."""
+
+    __tablename__ = "company_people"
+    __table_args__ = (
+        UniqueConstraint(
+            "company_id", "name_normalized", "role", "field_ident",
+            name="uq_company_people_identity",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"))
+    #: Exactly as printed by the registry (usually upper-case).
+    name: Mapped[str] = mapped_column(Text)
+    #: Lower-case, whitespace-collapsed, no punctuation -- the matching key.
+    name_normalized: Mapped[str] = mapped_column(String(256))
+    #: 'manager' | 'partner' | 'sole_owner' | 'board_member' |
+    #: 'representative' | 'liquidator' | 'other'
+    role: Mapped[str] = mapped_column(String(32))
+    #: e.g. 'Размер на дяловото участие: 50250.00 лв.'
+    share_text: Mapped[str | None] = mapped_column(Text, default=None)
+    #: ЕИК when the person is itself a company, else None.
+    person_eik: Mapped[str | None] = mapped_column(String(32), default=None)
+    #: False when the registry marks the field 'Заличено обстоятелство'.
+    is_current: Mapped[bool] = mapped_column(default=True)
+    #: Registry field the name came from (e.g. '00070' managers, '00190' partners).
+    field_ident: Mapped[str | None] = mapped_column(String(16), default=None)
+
+
+class Official(Base):
+    """A person holding a municipal public office whose declaration of
+    assets and interests is published by the municipality
+    (`scrapers.declarations`)."""
+
+    __tablename__ = "officials"
+    __table_args__ = (
+        UniqueConstraint("name_normalized", "role", "mandate", name="uq_officials_identity"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    #: The declaration register's printed name, enriched to a full
+    #: three-part name when `scrapers.declarations` found exactly one
+    #: unambiguous match on a composition page (see `short_name` below).
+    name: Mapped[str] = mapped_column(Text)
+    name_normalized: Mapped[str] = mapped_column(String(256))
+    #: The two-part name as originally printed on the declarations register
+    #: (e.g. "Георги Георгиев"), kept once `name`/`name_normalized` have been
+    #: enriched with a full name (e.g. "Георги Димитров Георгиев") off a
+    #: composition page. Null for an official enrichment never ran for
+    #: (e.g. no composition page covers their role) -- `name` is then still
+    #: the short form. Also used by `db.repo.upsert_official` to keep
+    #: matching the same person across runs after enrichment changes
+    #: `name_normalized`.
+    short_name: Mapped[str | None] = mapped_column(Text, default=None)
+    #: 'councillor' | 'mayor' | 'deputy_mayor' | 'village_mayor' |
+    #: 'secretary' | 'other'
+    role: Mapped[str] = mapped_column(String(64))
+    #: e.g. '2023-2027'
+    mandate: Mapped[str | None] = mapped_column(String(16), default=None)
+    #: The register page the name was taken from.
+    source_url: Mapped[str | None] = mapped_column(Text, default=None)
+    #: The composition page `name` was resolved from (e.g.
+    #: `https://os-nessebar.eu/sastav`), when `short_name` was successfully
+    #: enriched to a full name. Null otherwise.
+    name_source_url: Mapped[str | None] = mapped_column(Text, default=None)
+    #: The person's declaration PDF.
+    document_url: Mapped[str | None] = mapped_column(Text, default=None)
+    #: Interests parsed from the declaration: list of {"company_name",
+    #: "eik", "relation", "raw"}; empty list when the PDF yields no text.
+    declared_interests_json: Mapped[list | None] = mapped_column(JSON, default=None)
+    #: 'text' | 'scanned' | 'missing' -- how much the PDF could be read.
+    document_status: Mapped[str | None] = mapped_column(String(16), default=None)
+    fetched_at: Mapped[dt.datetime | None] = mapped_column(DateTime, default=None)

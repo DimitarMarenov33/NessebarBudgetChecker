@@ -7,10 +7,12 @@ columns. `data/nessebar.db` is committed to the repo with an old, empty-ish
 `law_ref`/`first_seen_at`/`last_seen_at`/`resolved_at`, later no
 `tier`/`explanation`/`documents_json`, and later still no `sources_json`
 columns), predating those fields being
-added to `db.models.Flag`. This module adds them with
-plain `ALTER TABLE ... ADD COLUMN` statements, each guarded by a check
-against `PRAGMA table_info`, so running it repeatedly (every `init_db()`
-call) is a no-op once the columns exist.
+added to `db.models.Flag`, and (once `Official` gained `short_name`/
+`name_source_url` for full-name enrichment, see `scrapers.declarations`) the
+same for any already-committed `officials` table. This module adds missing
+columns with plain `ALTER TABLE ... ADD COLUMN` statements, each guarded by
+a check against `PRAGMA table_info`, so running it repeatedly (every
+`init_db()` call) is a no-op once the columns exist.
 
 SQLite's `ALTER TABLE` can't add a constraint to an existing table, so the
 `(rule, subject_key)` uniqueness that `Flag.__table_args__` declares is
@@ -23,6 +25,7 @@ from __future__ import annotations
 import logging
 
 from sqlalchemy import Engine, text
+from sqlalchemy.engine import Connection
 
 logger = logging.getLogger(__name__)
 
@@ -45,10 +48,36 @@ _NEW_FLAG_COLUMNS: tuple[tuple[str, str], ...] = (
     ("sources_json", "JSON"),
 )
 
+#: (column name, SQL type) for every column `db.models.Official` added
+#: beyond the original committed `officials` table -- full-name enrichment
+#: (2026-10-08), see `scrapers.declarations`.
+_NEW_OFFICIAL_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("short_name", "TEXT"),
+    ("name_source_url", "TEXT"),
+)
+
 _UNIQUE_INDEX_SQL = (
     "CREATE UNIQUE INDEX IF NOT EXISTS uq_flags_rule_subject_key "
     "ON flags (rule, subject_key)"
 )
+
+
+def _existing_tables(conn: Connection) -> set[str]:
+    return {row[0] for row in conn.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))}
+
+
+def _add_missing_columns(
+    conn: Connection, table: str, columns: tuple[tuple[str, str], ...]
+) -> None:
+    """Add any of `columns` not yet present on `table`, via `ALTER TABLE ...
+    ADD COLUMN`, guarded by `PRAGMA table_info`. Caller has already checked
+    `table` exists and commits the connection afterwards."""
+    existing_columns = {row[1] for row in conn.execute(text(f"PRAGMA table_info({table})"))}
+    for column, sql_type in columns:
+        if column in existing_columns:
+            continue
+        logger.info("migrate: adding %s.%s (%s)", table, column, sql_type)
+        conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {sql_type}"))
 
 
 def migrate_flags_table(engine: Engine) -> None:
@@ -62,20 +91,24 @@ def migrate_flags_table(engine: Engine) -> None:
         return
 
     with engine.connect() as conn:
-        existing_tables = {
-            row[0] for row in conn.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))
-        }
-        if "flags" not in existing_tables:
+        if "flags" not in _existing_tables(conn):
             return  # create_all() will create it fresh, with every column already.
 
-        existing_columns = {
-            row[1] for row in conn.execute(text("PRAGMA table_info(flags)"))
-        }
-        for column, sql_type in _NEW_FLAG_COLUMNS:
-            if column in existing_columns:
-                continue
-            logger.info("migrate_flags_table: adding flags.%s (%s)", column, sql_type)
-            conn.execute(text(f"ALTER TABLE flags ADD COLUMN {column} {sql_type}"))
-
+        _add_missing_columns(conn, "flags", _NEW_FLAG_COLUMNS)
         conn.execute(text(_UNIQUE_INDEX_SQL))
+        conn.commit()
+
+
+def migrate_officials_table(engine: Engine) -> None:
+    """Add any missing `officials` columns (`short_name`, `name_source_url`)
+    to an already-existing SQLite database. Same no-op guarantees as
+    `migrate_flags_table`."""
+    if engine.dialect.name != "sqlite":
+        return
+
+    with engine.connect() as conn:
+        if "officials" not in _existing_tables(conn):
+            return  # create_all() will create it fresh, with every column already.
+
+        _add_missing_columns(conn, "officials", _NEW_OFFICIAL_COLUMNS)
         conn.commit()

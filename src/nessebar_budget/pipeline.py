@@ -17,7 +17,7 @@ Design notes for `run_weekly`:
   step is recorded (with its error) but does not stop later steps from
   running. If *any* step failed, `run_weekly` raises `SystemExit(1)` after
   all steps have run; otherwise it returns the summary dict.
-- Step 8 (`_step_build_site`) imports `nessebar_budget.web.build` lazily and
+- The last step (`_step_build_site`) imports `nessebar_budget.web.build` lazily and
   swallows `ImportError` as a soft "skip" (not a failure) -- that module is
   owned by a different workstream and may not exist yet / may not be
   installed in every environment.
@@ -42,10 +42,17 @@ from nessebar_budget.db.budget_repo import (
     upsert_budget_report,
 )
 from nessebar_budget.db.models import Flag
-from nessebar_budget.db.repo import upsert_procurements
+from nessebar_budget.db.repo import (
+    distinct_contractor_eiks,
+    upsert_company,
+    upsert_official,
+    upsert_procurements,
+)
 from nessebar_budget.db.session import get_session, init_db
+from nessebar_budget.scrapers.declarations import DeclarationsScraper
 from nessebar_budget.scrapers.eop import EopScraper
 from nessebar_budget.scrapers.nesebar_site import NesebarSiteScraper
+from nessebar_budget.scrapers.registry import RegistryScraper
 from nessebar_budget.scrapers.sigma import SigmaScraper
 
 logger = logging.getLogger(__name__)
@@ -61,6 +68,8 @@ _STEP_NAMES: tuple[str, ...] = (
     "init_db",
     "scrape_eop",
     "scrape_sigma",
+    "scrape_registry",
+    "scrape_declarations",
     "scrape_nesebar_site",
     "parse_budget",
     "analyze",
@@ -123,6 +132,53 @@ def _step_scrape_sigma(settings: Settings) -> dict[str, Any]:
         session.commit()
 
     return {"fetched": len(records), "inserted": inserted, "updated": updated}
+
+
+def _step_scrape_registry(settings: Settings) -> dict[str, Any]:
+    """Fetch Trade Register deeds (`scrapers.registry`) for every distinct
+    `contractor_eik` in `procurements`, and upsert them into
+    `companies`/`company_people`. A persistently-failing ЕИК (e.g. one still
+    429-rate-limited past its own retries) is skipped, not fatal to the
+    step -- see `RegistryScraper`'s module docstring -- and listed in the
+    returned info dict instead."""
+    with get_session() as session:
+        eiks = distinct_contractor_eiks(session)
+
+    scraper = RegistryScraper(delay=2.0)
+    try:
+        records = scraper.fetch(eiks)
+    finally:
+        scraper.close()
+
+    with get_session() as session:
+        for record in records:
+            upsert_company(session, record)
+        session.commit()
+
+    return {
+        "eiks": len(eiks),
+        "fetched": len(records),
+        "failed": len(scraper.failures),
+        "failures": [eik for eik, _ in scraper.failures],
+    }
+
+
+def _step_scrape_declarations(settings: Settings) -> dict[str, Any]:
+    """Fetch the municipal council's declarations registers and each
+    official's declaration PDF (see `scrapers.declarations`), and upsert
+    them keyed on (name_normalized, role, mandate)."""
+    scraper = DeclarationsScraper()
+    try:
+        records = scraper.run(delay=2.0)
+    finally:
+        scraper.close()
+
+    with get_session() as session:
+        for record in records:
+            upsert_official(session, record)
+        session.commit()
+
+    return {"fetched": len(records)}
 
 
 def _step_scrape_nesebar_site(settings: Settings) -> dict[str, Any]:

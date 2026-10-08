@@ -8,7 +8,7 @@ record), find the row, and compare the figures. Each entry::
 
     {
       "kind":   "budget_file" | "eop_contract" | "eop_tender" | "sigma"
-                | "reports_page" | "flag",
+                | "reports_page" | "flag" | "registry" | "declaration",
       "label":  Bulgarian description, e.g.
                 "Разчет за капиталовите разходи — декември 2022 г.",
       "url":    original public URL (or a site-relative "flags/<id>.html"
@@ -50,6 +50,13 @@ KIND_EOP_TENDER = "eop_tender"
 KIND_SIGMA = "sigma"
 KIND_REPORTS_PAGE = "reports_page"
 KIND_FLAG = "flag"
+#: Търговски регистър (Registry Agency) deed page for a `Company` -- used by
+#: `rules.companies` (`related_party`, `person_concentration`, `young_company`,
+#: `company_status`, `activity_mismatch`).
+KIND_REGISTRY = "registry"
+#: Регистър на декларациите -- an `Official`'s declaration of interests PDF,
+#: used by `rules.companies.related_party_flags`.
+KIND_DECLARATION = "declaration"
 KINDS = (
     KIND_BUDGET_FILE,
     KIND_EOP_CONTRACT,
@@ -57,6 +64,8 @@ KINDS = (
     KIND_SIGMA,
     KIND_REPORTS_PAGE,
     KIND_FLAG,
+    KIND_REGISTRY,
+    KIND_DECLARATION,
 )
 
 #: Община Несебър's ЕИК as SIGMA spells it in the export URL.
@@ -665,3 +674,44 @@ def flag_source(rule: str, subject_key: str, label: str) -> dict[str, Any]:
     """Another flag this one is built on. `url` ("flags/<id>.html",
     site-relative) is filled in by the engine once the flag has an id."""
     return _source(KIND_FLAG, label, rule=rule, subject_key=subject_key)
+
+
+# ---------------------------------------------------------------------------
+# Trade Register / declarations of interest (rules.companies)
+# ---------------------------------------------------------------------------
+
+
+def registry_source(
+    company: dict[str, Any] | Any,
+    fields: list[dict[str, Any]],
+    *,
+    note: str | None = None,
+) -> dict[str, Any]:
+    """Търговски регистър source: the company's registry deed page
+    (`Company.source_url`), carrying whichever fields the calling rule
+    actually read -- e.g. a matched person's name/role/share for
+    `related_party`, or the company's own status/registration date/last ГФО
+    year for `young_company`/`company_status`. `fields` is built by the
+    caller (each `{"name", "label", "value", "value_eur"}`, same shape as
+    every other source kind)."""
+    name = _get(company, "name")
+    eik = _get(company, "eik")
+    label = f"Търговски регистър — {name or eik or '?'}"
+    return _source(KIND_REGISTRY, label, url=_get(company, "source_url"), fields=fields, note=note)
+
+
+def declaration_source(
+    official: dict[str, Any] | Any,
+    fields: list[dict[str, Any]],
+    *,
+    note: str | None = None,
+) -> dict[str, Any]:
+    """Регистър на декларациите source: the official's declaration of
+    interests PDF (`Official.document_url`). `fields` is built by the
+    caller: name/role/mandate always, plus the matched raw line from
+    `declared_interests_json` when the flag's match basis is the
+    declaration itself (vs. a bare name match, where there is no specific
+    line to point at -- the note then says the declaration is unverified)."""
+    name = _get(official, "name")
+    label = f"Декларация за интереси — {name or '?'}"
+    return _source(KIND_DECLARATION, label, url=_get(official, "document_url"), fields=fields, note=note)

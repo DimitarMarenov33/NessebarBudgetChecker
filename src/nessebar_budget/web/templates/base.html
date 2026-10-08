@@ -13,6 +13,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
 <link rel="stylesheet" href="{{ root }}static/style.css">
+{% block head %}{% endblock %}
 </head>
 <body>
 <a class="skip-link" href="#main">Към съдържанието</a>
@@ -20,6 +21,7 @@
   ("contracts", "contracts/index.html", "Поръчки"),
   ("contractors", "contractors/index.html", "Изпълнители"),
   ("budget", "budget/index.html", "Бюджет"),
+  ("map", "map.html", "Карта"),
   ("cash", "cash/index.html", "Касово изпълнение"),
   ("flags", "flags/index.html", "Сигнали"),
   ("methodology", "methodology.html", "Методология"),
@@ -64,7 +66,7 @@
       <div class="footer__col">
         <p class="eyebrow">Разгледай</p>
         <ul>
-          {% for key, href, label in nav_items[:5] %}
+          {% for key, href, label in nav_items[:6] %}
           <li><a href="{{ root }}{{ href }}">{{ label }}</a></li>
           {% endfor %}
         </ul>

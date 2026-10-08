@@ -13,6 +13,10 @@ lines); every public name -- and the private helpers the tests use
 - `budget`       -- unplanned_spending, overspend_vs_plan, plan_jump,
                     unmatched_spending
 - `reports`      -- missing_monthly_report, missing_annual_report
+- `companies`    -- related_party, person_concentration, young_company,
+                    company_status, activity_mismatch (Trade Register /
+                    declarations of interest; all gracefully [] when
+                    `companies`/`officials` is empty)
 - `meta`         -- eu_funded_irregularity (runs last, over the others' output)
 - `linking`      -- EOP <-> SIGMA twins, tender grouping, EU-funding detection
 
@@ -53,6 +57,13 @@ from nessebar_budget.analysis.rules.budget import (
     unmatched_spending_flags,
     unplanned_spending_flags,
 )
+from nessebar_budget.analysis.rules.companies import (
+    activity_mismatch_flags,
+    company_status_flags,
+    person_concentration_flags,
+    related_party_flags,
+    young_company_flags,
+)
 from nessebar_budget.analysis.rules.competition import (
     category_of,
     near_threshold_flags,
@@ -66,6 +77,7 @@ from nessebar_budget.analysis.rules.contracts import (
     annex_over_cap_flags,
     bid_at_ceiling_flags,
     contractor_concentration_flags,
+    contractor_key,
     exceptional_procedure_flags,
     late_publication_flags,
     missing_value_flags,
@@ -99,6 +111,11 @@ RULE_TIERS: dict[str, str] = {
     "exceptional_procedure": TIER_SIGNAL,
     "bid_at_ceiling": TIER_SIGNAL,
     "missing_annual_report": TIER_SIGNAL,
+    "related_party": TIER_SIGNAL,
+    "person_concentration": TIER_SIGNAL,
+    "young_company": TIER_SIGNAL,
+    "company_status": TIER_SIGNAL,
+    "activity_mismatch": TIER_SIGNAL,
     "eu_funded_irregularity": TIER_SIGNAL,
     "missing_quantity": TIER_OPACITY,
     "missing_value": TIER_OPACITY,
@@ -129,12 +146,15 @@ __all__ = [
     "_short_title",
     "_to_eur",
     "_unplanned_reasons",
+    "activity_mismatch_flags",
     "annex_growth_flags",
     "annex_over_cap_flags",
     "bid_at_ceiling_flags",
     "build_index",
     "category_of",
+    "company_status_flags",
     "contractor_concentration_flags",
+    "contractor_key",
     "eu_funded_irregularity_flags",
     "exceptional_procedure_flags",
     "late_publication_flags",
@@ -143,11 +163,14 @@ __all__ = [
     "missing_value_flags",
     "near_threshold_flags",
     "overspend_vs_plan_flags",
+    "person_concentration_flags",
     "plan_jump_flags",
     "price_unverifiable_flags",
+    "related_party_flags",
     "short_offer_deadline_flags",
     "single_bidder_flags",
     "splitting_flags",
     "unmatched_spending_flags",
     "unplanned_spending_flags",
+    "young_company_flags",
 ]

@@ -1,0 +1,388 @@
+{
+  "deedStatus": 2,
+  "companyName": "ТРАНССТРОЙ-БУРГАС",
+  "uic": "102003626",
+  "uicWithCtx": "MTAyMDAzNjI2JtCi0KDQkNCd0KHQodCi0KDQntCZLdCR0KPQoNCT0JDQoRN8tNBWNqoC7TWp0BGB_BPb2_hedppum1klOYYfkuqi",
+  "legalForm": 5,
+  "sections": [
+    {
+      "subUICType": 1,
+      "nameCode": "CR_GL_GENERAL_STATUS_L",
+      "order": "20001",
+      "subDeeds": [
+        {
+          "subUIC": "0016",
+          "subUICType": 1,
+          "subDeedStatus": 2,
+          "sectionName": "CR_GL_GENERAL_STATUS_L",
+          "subDeedIsClosed": false,
+          "groups": [
+            {
+              "groupID": 415,
+              "nameCode": "CR_GL_MAIN_CIRCUMSTANCES_L",
+              "order": "20001",
+              "fields": [
+                {
+                  "nameCode": "CR_F_1_L",
+                  "htmlData": "<div class='record-container record-container--preview'><p class='field-text'>102003626<br/>Фирмено дело: 3249/1994 210</p></div>",
+                  "fieldEntryNumber": "20080207142856",
+                  "recordMinActionDate": "2008-02-07T14:28:56",
+                  "fieldEntryDate": "2008-02-07T14:28:56",
+                  "fieldActionDate": "2008-02-07T14:28:56",
+                  "fieldIdent": "00010",
+                  "fieldOperation": 3,
+                  "order": "00010"
+                },
+                {
+                  "nameCode": "CR_F_2_L",
+                  "htmlData": "<div class='record-container record-container--preview'><p class='field-text'>ТРАНССТРОЙ-БУРГАС</p></div>",
+                  "fieldEntryNumber": "20080207133926",
+                  "recordMinActionDate": "2008-02-07T13:39:26",
+                  "fieldEntryDate": "2008-02-07T13:39:26",
+                  "fieldActionDate": "2008-02-07T13:39:26",
+                  "fieldIdent": "00020",
+                  "fieldOperation": 3,
+                  "order": "00020"
+                },
+                {
+                  "nameCode": "CR_F_3_L",
+                  "htmlData": "<div class='record-container record-container--preview'><p class='field-text'>Акционерно дружество</p></div>",
+                  "fieldEntryNumber": "20080207133926",
+                  "recordMinActionDate": "2008-02-07T13:39:26",
+                  "fieldEntryDate": "2008-02-07T13:39:26",
+                  "fieldActionDate": "2008-02-07T13:39:26",
+                  "fieldIdent": "00030",
+                  "fieldOperation": 3,
+                  "order": "00030"
+                },
+                {
+                  "nameCode": "CR_F_4_L",
+                  "htmlData": "<div class='record-container record-container--preview'><p class='field-text'>TRANSSTROY - BURGAS</p></div>",
+                  "fieldEntryNumber": "20080207133926",
+                  "recordMinActionDate": "2008-02-07T13:39:26",
+                  "fieldEntryDate": "2008-02-07T13:39:26",
+                  "fieldActionDate": "2008-02-07T13:39:26",
+                  "fieldIdent": "00040",
+                  "fieldOperation": 3,
+                  "order": "00040"
+                },
+                {
+                  "nameCode": "CR_F_5_L",
+                  "htmlData": "<div class='record-container record-container--preview'><p class='field-text'>Държава: БЪЛГАРИЯ<br/>Област: Бургас, Община: Бургас<br />Населено място: гр. Бургас, п.к. 8000<br/>бул./ул. ул. УСПЕНСКА № 8 Телефон: 056/85 70 80, Факс: 056/84 13 32<br/>Адрес на електронна поща: <a style=\"text-decoration:underline;color:black\" href=\"mailto:transstroy@transstroy.com\">transstroy@transstroy.com</a>, Интернет страница: <a style=\"text-decoration:underline;color:black\" href=\"http://www.transstroy.com\" target=\"_blank\">www.transstroy.com</a></p></div>",
+                  "fieldEntryNumber": "20080207133926",
+                  "recordMinActionDate": "2008-02-07T13:39:26",
+                  "fieldEntryDate": "2008-02-07T13:39:26",
+                  "fieldActionDate": "2008-02-07T13:39:26",
+                  "fieldIdent": "00050",
+                  "fieldOperation": 3,
+                  "order": "00050"
+                },
+                {
+                  "nameCode": "CR_F_5a_L",
+                  "htmlData": "<div class='record-container record-container--preview'><p class='field-text'>Държава: БЪЛГАРИЯ<br/>Област: Бургас, Община: Бургас<br />Населено място: гр. Бургас, п.к. 8000<br/>бул./ул. ул. Успенска № 8</p></div>",
+                  "fieldEntryNumber": "20180731114500",
+                  "recordMinActionDate": "2018-07-31T11:45:00",
+                  "fieldEntryDate": "2018-07-31T11:45:00",
+                  "fieldActionDate": "2018-07-31T11:45:00",
+                  "fieldIdent": "00051",
+                  "fieldOperation": 3,
+                  "order": "00051"
+                },
+                {
+                  "nameCode": "CR_F_6_L",
+                  "htmlData": "<div class='record-container record-container--preview'><p class='field-text'>CTPOИTEЛCTBO,  PEKOHCTPУKЦИЯ,  MOДEPHИЗAЦИЯ, OCHOBEH И TEKУЩ  PEMOHT  HA ЖEЛEЗOПЪTHИ ЛИHИИ B CTPAHATA И B ЧУЖБИHA; CTPOИTEЛCTBO  И  PEMOHT HA KOHTAKTHИ MPEЖИ B ЖEЛEЗOПЪTHИЯ И ГPAДCKИЯ TPAHCПOPT;  ИЗГPAЖДAHE HA BCИЧKИ BИДOBE CTPOИTEЛHИ OБEKTИ HA БEЗOПACHOCTTA HA  ДBИЖEHИETO  И  EKOЛOГИЯTA;  ИЗГPAЖДAHE  HA KOMУHИKAЦИOHHИ OБEKTИ,  PAДИOPEЛEЙHИ,  TEЛEBИЗИOHHИ И ДPУГИ CTAHЦИИ B CTPAHATA И ЧУЖБИHA;  CTPOИTEЛCTBO  И  PEMOHT  HA ABTOMOБИЛИ ПЪTИЩA И TEXHИTE ИHЖEHEPHИ  CЪOPЪЖEHИЯ;  ИЗГPAЖДAHE  И  MOДEPHИЗAЦИЯ  HA  ЛETИЩA, ПPИCTAHИЩA,  XИДPOTEXHИЧECKИ  И  ДPУГИ CПEЦИAЛИЗИPAHИ ИHФPACTPУKTУPHИ OБEKTИ B  CTPAHATA  И  ЧУЖБИHA; ЖИЛИЩHO CTPOИTEЛCTBO; ЛAБOPATOPHИ ИЗПИTAHИЯ  HA  MATEPИAЛИ  И  ИHЖEHEPHИ  CЬOPЪЖEHИЯ B TPAHCПOPTA; ИHЖEHEPИHГ;  XOTEЛИEPCTBO  И  TУPИCTИЧECKИ УCЛУГИ; TЪPГOBИЯ, OTДABAHE ПOД HAEM  HA  HEДBИЖИMИ  ИMOTИ  И  ДPУГИ  CДEЛKИ  И  УCЛУГИ, HEЗAБPAHEHИ OT  ЗAKOHA.</p></div>",
+                  "fieldEntryNumber": "20080207133926",
+                  "recordMinActionDate": "2008-02-07T13:39:26",
+                  "fieldEntryDate": "2008-02-07T13:39:26",
+                  "fieldActionDate": "2008-02-07T13:39:26",
+                  "fieldIdent": "00060",
+                  "fieldOperation": 3,
+                  "order": "00060"
+                },
+                {
+                  "nameCode": "CR_F_6a_L",
+                  "htmlData": "<div class='record-container record-container--preview'><p class='field-text'>Група по НКИД: 42.99<br/>Клас по НКИД: Строителство на други съоръжения, некласифицирани другаде</p></div>",
+                  "fieldEntryNumber": "20180731114500",
+                  "recordMinActionDate": "2008-02-07T13:39:26",
+                  "fieldEntryDate": "2018-07-31T11:45:00",
+                  "fieldActionDate": "2018-07-31T11:45:00",
+                  "fieldIdent": "00061",
+                  "fieldOperation": 3,
+                  "order": "00061"
+                },
+                {
+                  "nameCode": "CR_F_10_L",
+                  "htmlData": "<div class='record-container record-container--preview'><p class='field-text'>НИКОЛАЙ МИЛЕВ МИЛЕВ, Държава: БЪЛГАРИЯ</p></div>",
+                  "fieldEntryNumber": "20130912135424",
+                  "fieldEntryDate": "2013-09-12T13:54:24",
+                  "fieldActionDate": "2013-09-12T13:54:24",
+                  "fieldIdent": "00100",
+                  "fieldOperation": 1,
+                  "order": "00100"
+                },
+                {
+                  "nameCode": "CR_F_11_L",
+                  "htmlData": "<div class='record-container record-container--preview'><div class='erasure-text-inline'><i class='ui-icon ui-icon-erased mr-1'></i>Заличено обстоятелство.</div></div>",
+                  "fieldEntryNumber": "20080207142856",
+                  "recordMinActionDate": "2008-02-07T13:39:26",
+                  "fieldEntryDate": "2008-02-07T14:28:56",
+                  "fieldActionDate": "2008-02-07T14:28:56",
+                  "fieldIdent": "00110",
+                  "fieldOperation": 2,
+                  "order": "00110"
+                },
+                {
+                  "nameCode": "CR_F_13_L",
+                  "htmlData": "<div class='record-container record-container--preview'><p class='field-text'>Дата на изтичане на мандата: 17.08.2028 г. </p></div><div class='record-container record-container--preview'><p class='field-text'>ВАЛЕНТИН СТОЙНЕВ БОРИСОВ, Държава: БЪЛГАРИЯ</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>НИКОЛАЙ МИЛЕВ МИЛЕВ, Държава: БЪЛГАРИЯ</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Гергана Господинова Николова, Държава: БЪЛГАРИЯ</p></div>",
+                  "fieldEntryNumber": "20230828135709",
+                  "fieldEntryDate": "2023-08-28T13:57:09",
+                  "fieldActionDate": "2023-08-28T13:57:09",
+                  "fieldIdent": "00132",
+                  "fieldOperation": 3,
+                  "order": "00132"
+                },
+                {
+                  "nameCode": "CR_F_14_L",
+                  "htmlData": "<div class='record-container record-container--preview'><p class='field-text'>Дата на изтичане на мандата: 14.06.2029 г. </p></div><div class='record-container record-container--preview'><p class='field-text'>МИЛЧО СТОЙКОВ КИРЯКОВ</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>НИНА ДОБРЕВА МИГАРОВА, Държава: БЪЛГАРИЯ</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Николай Ангелов Георгиев, Държава: БЪЛГАРИЯ</p></div>",
+                  "fieldEntryNumber": "20240621112212",
+                  "fieldEntryDate": "2024-06-21T11:22:12",
+                  "fieldActionDate": "2024-06-21T11:22:12",
+                  "fieldIdent": "00140",
+                  "fieldOperation": 3,
+                  "order": "00140"
+                },
+                {
+                  "nameCode": "CR_F_17_L",
+                  "htmlData": "<div class='record-container record-container--preview'><p class='field-text'>Дружеството е публично акционерно дружество съгласно ЗППЦК.</p></div>",
+                  "fieldEntryNumber": "20130307103958",
+                  "recordMinActionDate": "2013-03-07T10:39:58",
+                  "fieldEntryDate": "2013-03-07T10:39:58",
+                  "fieldActionDate": "2013-03-07T10:39:58",
+                  "fieldIdent": "00170",
+                  "fieldOperation": 3,
+                  "order": "00170"
+                }
+              ]
+            },
+            {
+              "groupID": 16,
+              "nameCode": "CR_GL_FUND_L",
+              "order": "20002",
+              "fields": [
+                {
+                  "nameCode": "CR_F_31_L",
+                  "htmlData": "<div class='record-container record-container--preview'><p class='field-text'>44734.14 €</p></div>",
+                  "fieldEntryNumber": "20260101003007",
+                  "recordMinActionDate": "2008-02-07T13:39:26",
+                  "fieldEntryDate": "2026-01-01T00:30:07",
+                  "fieldActionDate": "2026-01-01T00:30:07",
+                  "fieldIdent": "00310",
+                  "fieldOperation": 3,
+                  "order": "00310"
+                },
+                {
+                  "nameCode": "CR_F_31a_L",
+                  "htmlData": "<div class='record-container record-container--preview'><p class='field-text'>Права за отделни класове акции: АКЦИИТЕ СА НЕПРИВИЛЕГИРОВАНИ ПОИМЕННИ С ПРАВО НА ЕДИН ГЛАС В ОС НА АКЦИОНЕРИТЕ, ПРАВО НА ДИВИДЕНТ И ЛИКВИДАЦИОНЕН ДЯЛ СЪРАЗМЕРНИ С НОМИНАЛНАТА СТОЙНОСТ НА АКЦИЯТА. АКЦИИТЕ СА БЕЗНАЛИЧНИ, ИЗДАВАНЕТО И РАЗПОРЕЖДАНЕТО С ТЯХ СТАВА В СЪОТВЕТСТВИЕ С ДЕЙСТВАЩАТА НОРМАТИВНА УРЕДБА. АКЦИИТЕ СА НЕДЕЛИМИ. КОГАТО АКЦИЯТА ПРИНАДЛЕЖИ НА НЯКОЛКО ЛИЦА ТЕ УПРАЖНЯВАТ ПРАВАТА СИ ПО НЕЯ ЗАЕДНО, КАТО ОПРЕДЕЛЯТ ПЪЛНОМОЩНИК.</p></div><div class='record-container record-container--preview'><p class='field-text'>Особени условия за прехвърляне на акции: ПРЕХВЪРЛЯНЕТО НА АКЦИИ СЕ ИЗВЪРШВА СВОБОДНО, ПРИ СПАЗВАНЕ ИЗИСКВАНИЯТА НА ДЕЙСТВАЩАТА НОРМАТИВНА УРЕДБА.</p></div><div class='record-container record-container--preview'><p class='field-text'>Акция:<br/>Вид: ПОИМЕННИ БЕЗНАЛИЧНИ НЕДЕЛИМИ, Брой акции: 87714, Номинална стойност: 0.51 €</p></div>",
+                  "fieldEntryNumber": "20260101003007",
+                  "fieldEntryDate": "2026-01-01T00:30:07",
+                  "fieldActionDate": "2026-01-01T00:30:07",
+                  "fieldIdent": "00311",
+                  "fieldOperation": 1,
+                  "order": "00311"
+                },
+                {
+                  "nameCode": "CR_F_32_L",
+                  "htmlData": "<div class='record-container record-container--preview'><p class='field-text'>44734.14 €</p></div>",
+                  "fieldEntryNumber": "20260101003007",
+                  "recordMinActionDate": "2008-02-07T13:39:26",
+                  "fieldEntryDate": "2026-01-01T00:30:07",
+                  "fieldActionDate": "2026-01-01T00:30:07",
+                  "fieldIdent": "00320",
+                  "fieldOperation": 3,
+                  "order": "00320"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "subUICType": 13,
+      "nameCode": "CR_GL_ANNOUNCED_ACTS_L",
+      "order": "20001",
+      "subDeeds": [
+        {
+          "subUIC": "0016",
+          "subUICType": 13,
+          "subDeedStatus": 0,
+          "sectionName": "CR_GL_ANNOUNCED_ACTS_L",
+          "subDeedIsClosed": false,
+          "groups": [
+            {
+              "groupID": 42,
+              "nameCode": "CR_GL_ANNOUNCED_ACTS_L",
+              "order": "20001",
+              "fields": [
+                {
+                  "nameCode": "CR_F_1001_L",
+                  "htmlData": "<div class='record-container record-container--preview'><p class='field-text'>Годишен финансов отчет<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmOGM5MzU4ZDM2N2VkNDUyNWJjODhkMzg3ZTRmMjEyOGKEiayGrUnMumGNaZZhL5Wv8cu_ukuG2nI0BuAFfDRDWg' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>за 2007г.</a><br/>Дата на обявяване: 25.09.2008 г. 16:25:56</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Годишен финансов отчет<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmMmViYjUzMmJmYjUwNDg0YTk4Mjg2MDk5Y2UwODc2OWaUYvfPpGu0VFzY30LB-HRSH7tISoOWY7zQDCa_-8EHWg' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>за 2008 г.</a><br/>Дата на обявяване: 29.05.2009 г. 15:57:59</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Годишен финансов отчет<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmODFhY2VjOGZlNjdkNDNhNmI3Njg0ODgyY2RiMTcwNTBTwi2kN6PGCicYA2EeA_M9zkpvsXuxCu0q8tJM0IfXlg' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Консолидиран за 2008 г.</a><br/>Дата на обявяване: 03.07.2009 г. 10:07:46</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Годишен финансов отчет<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmN2E3MDNkZTg5YWMxNDI3M2JhOGRlOGMyMWJjMjMxZDl2QaOKZmvpg7U76m7BVaF84bi3phU_IQWsRPHTAYcGxw' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Годишен финансов отчет индивидуален 2009г</a><br/>Дата на обявяване: 21.06.2010 г. 16:15:10</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Годишен финансов отчет<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmY2MzMTZmYjIxOTBlNDE4Y2E4NWZmNzcwNzA1NTJhMmayNf_DcpfRTXBFc67oYmUhWM_kzcTyZcYXrhGYsSCRCQ' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Годишен финансов отчет консолидиран 2009г. </a><br/>Дата на обявяване: 21.06.2010 г. 16:15:10</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Годишен финансов отчет<br/>Година: 2010г.<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmYTBlNjBkODFmMmQ2NDEzOWI5YzBmNTk5MzZjNWYzODnjIlFvNokSewF1eokV5p_yOXYB2rooXwL7vbPbRoDOrw' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Годишен финансов отчет 2010 - индивидуален</a><br/>Дата на обявяване: 13.07.2011 г. 18:10:17</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Годишен финансов отчет<br/>Година: 2010г.<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmMDY1OTc2YWRmOTQ5NDk5MzhiMDcxM2QyYTYyNzQxNmKbqrbdfslAHw-jlvJoZjZbIKOzXi2zJbcbB1gIcFW74A' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Годишен финансов отчет 2010 - консолидиран</a><br/>Дата на обявяване: 13.07.2011 г. 18:10:17</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Годишен финансов отчет<br/>Година: 2011г.<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmMWM5OTc3MGIyM2Q1NGI4Y2JjZDk1OTZlYTk2ODA3Mjml-X5LCKCEEGVNo0BgEaIaGs037HlHIr6Q_Q0Wai3ypA' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Годишен финансов отчет</a><br/>Дата на обявяване: 17.12.2013 г. 12:01:32</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Годишен финансов отчет<br/>Година: 2012г.<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmYThjNWRhYzRhN2RjNGMzOGEwNzc5MmM3MGUzMmVjMWNSulYL2G3zhos7muzqUib3BDLuulflZL3Jr9w-t31twA' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Годишен финансов отчет</a><br/>Дата на обявяване: 17.12.2013 г. 12:01:32</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Годишен финансов отчет<br/>Година: 2013г.<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmYjhlYmQ5NzE0NWQ3NGFkZDljZTMzYWViNzNkMTFmNGHcxXZGB33HVU-BJtX6mkPRAve7dPV52yRpWZzjkmE1fw' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Годишен финансов отчет</a><br/>Дата на обявяване: 19.03.2015 г. 09:06:14</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Годишен финансов отчет<br/>Година: 2014г.<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmMDMzZTU5ZjIxZmEyNGUxNmJmZTI1ZDE3ODI5N2Q5YmHH9Nf01BOS6sqssBN-VZ5bavKTKZqALqw0AzBGqKQcHA' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Годишен финансов отчет</a><br/>Дата на обявяване: 28.09.2015 г. 11:18:29</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Годишен финансов отчет<br/>Година: 2015г.<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmMGRjNTg5NTVlOGVhNDA0M2I3OWFkNGViZmZlM2IxYmauxpzgZbGKaNXN-janRN6-w_lP_DusA021jGWJz2nsGg' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Годишен финансов отчет</a><br/>Дата на обявяване: 27.06.2016 г. 15:26:43</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Годишен финансов отчет<br/>Година: 2016г.<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmODgwZmNkZWQ5YTEzNGVkYmEyMmFlZGViODY3ODM4MzQ9cTG5vXtPmSvk_akv1NxMRwzFDneDxtmd7SXw77Lpaw' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Одиторски доклад към консолидиран отчет</a><br/>Дата на обявяване: 15.05.2018 г. 09:27:35</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Годишен финансов отчет<br/>Година: 2016г.<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmYWQzNjVkM2M0NTA2NDk2YmE4YzE2ZjRjYmE5NTlhNTDcr8s7AxUaKdSCRkFIKX7cZi6aG8_6d2M0oc0bb2t7Cg' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Годишен финансов отчет 2016 индивидуален</a><br/>Дата на обявяване: 15.05.2018 г. 09:27:35</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Годишен финансов отчет<br/>Година: 2016г.<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmOTU0ZmM4YTVhODEyNGNjNmE1YjQyMDQ2MmM4OTg2ZDBrz9oCYA7pGLUMBXZTTWMSYKC0xUCqaaBjoSnFg6PUwQ' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Годишен финансов отчет 2016 консолидиран</a><br/>Дата на обявяване: 15.05.2018 г. 09:27:35</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Годишен финансов отчет<br/>Година: 2016г.<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmYWFkNWE3Yzc0YjI1NDY5ZThmOWU2OWNmYmUwOTQ4ZTSKFGzMCVcTrUNP6q1wGB7ZmIN3pkk2lvhlmEs2ZQqoiA' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Приложение към ГФО индивидуален</a><br/>Дата на обявяване: 15.05.2018 г. 09:27:35</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Годишен финансов отчет<br/>Година: 2016г.<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmZTZlYWNiOTU0YzlmNGRkMzkxYTM1MDExODI0ZTY0ZDOd5ho7M2eeePUq_lRh6Fmpp5dCWc-QPmJalhKApAmlPA' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Приложение към ГФО консолидиран</a><br/>Дата на обявяване: 15.05.2018 г. 09:27:35</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Годишен финансов отчет<br/>Година: 2016г.<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmMGQ3NDlmNDYyNjU4NDllNDhmMTJhNWJhMzJlOTYzZTHoY5wZLpr2oHcPiVJG3UiGA62uOFo_RPvLbxPpIN5GmA' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Годишен доклад към индивидуален отчет</a><br/>Дата на обявяване: 15.05.2018 г. 09:27:35</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Годишен финансов отчет<br/>Година: 2016г.<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmMTUzMzRmMGQ2MjEwNDA5NThjYzZiM2E2OWI5MTQxM2U3g4IYh6JXSLtTJjC3pP2iBljwmKOcO9tNPi6HmWoJmw' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Годишен доклад към консолидиран отчет</a><br/>Дата на обявяване: 15.05.2018 г. 09:27:35</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Годишен финансов отчет<br/>Година: 2016г.<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmZDMzN2M3NjRhNDdiNDY0Y2JkNTAwZWRkYjFiYjJiYTmxVuYMxvYbb9ePZ5CgCF1EUx66liCblKWpUVKCJCWi1w' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Одиторски доклад към индивидуален отчет</a><br/>Дата на обявяване: 15.05.2018 г. 09:27:35</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Годишен финансов отчет<br/>Година: 2017г.<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmMWI4OGM2OWYwMGViNDFjZmFjMGE3NDM4MTdlOWE4NmUpMrmtmSBwV6YbBGPdWNOuv5LQaMsSBKMmbrhHSCsu_g' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Годишен финансов отчет</a><br/>Дата на обявяване: 03.09.2018 г. 12:13:29</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Годишен финансов отчет<br/>Година: 2018г.<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmMzE3ZGZjNTliZjRmNGM0N2E5MzZhYjVjODEyYWFjZjc6rZHI4t0EQUScvpgXnLte1I4zeLUJ1vVbjGLsaKUC9w' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Консолидиран</a><br/>Дата на обявяване: 26.07.2019 г. 16:23:20</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Годишен финансов отчет<br/>Година: 2018г.<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmZTk1ZmE3NTc2ZjU3NDNjYjk0ZTM0ZDQ2NjIwZTVhYTTizSMJJsyE-lRxZz57a5LRCD4ny1E1EEpSDSV1hlDRNg' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Индивидуален</a><br/>Дата на обявяване: 26.07.2019 г. 16:23:20</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Годишен финансов отчет<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmMTIxNzdjNmY3MzE4NDRhNzkwYjYyM2ZjZWE1M2IzY2F_YZAAptPYTOSz8RdDDW_NtMxrpgpHM_B2Q854bhZOIQ' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Годишен финансов отчет- индивидуален</a><br/>Дата на обявяване: 15.07.2020 г. 16:13:56</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Годишен финансов отчет<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmY2NkY2FhOGExYzFlNDZiYWJmZDdhOWY4NTA2ZjQ5OGJj7rBqWCnZmdd7co-6H_jaGWOCiSMSLvq0KuyVLlFx_Q' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Годишен финансов отчет- консолидиран</a><br/>Дата на обявяване: 15.07.2020 г. 16:13:56</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Годишен финансов отчет<br/>Година: 2019г.<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmYmM5M2YxNjNhOTJmNDI0MWE1NmZlM2EyNjQzN2Q3MmM0QuNO4AqLgQ0qjkUOTpGwSMnEsu_ptZL5JpUsDYQG7w' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Годишен финансов отчет</a><br/>Дата на обявяване: 15.07.2020 г. 16:13:56</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Годишен финансов отчет<br/>Година: 2019г.<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmNWFiYTdiM2U0NjE2NDIzYWI5MDRiZDQ3NDI2MDc4MTTjMv4SuZgWOXprE2EtubXWuwjx2l-hb9cYYFMS5oxmcQ' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Годишен финансов отчет</a><br/>Дата на обявяване: 15.07.2020 г. 16:13:56</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Годишен финансов отчет<br/>Година: 2020г.<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmMDU0YjQzYTY0NjcwNDg3MzkxZTMxN2I5ZDM3ZDkyMDUO0YmVFtteQNwFYY5n1gcsb1p2ycFmTe4a1tOrBqZBiQ' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Годишен финансов отчет за 2020г. - индивидуален</a><br/>Дата на обявяване: 29.04.2022 г. 15:25:17</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Годишен финансов отчет<br/>Година: 2020г.<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmYTBkNTVhMDdmZDVlNGFlZWJjOTE2N2VjOTE0NDAzNDQPwSXIQaVhbMD2q92JqYQoZR4iv0GO7ofqmyQqUtzTMg' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Годишен финансов отчет за 2020г. - консолидиран</a><br/>Дата на обявяване: 29.04.2022 г. 15:25:17</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Годишен финансов отчет<br/>Година: 2020г.<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmMzQ4MDZkMDk1MDk5NDRiODlkOGIwZDEzMTQ1ZDY5NGJXVqrXCZFEB5nYIGW7IatNw4oeLw0dCzQ2KeJ1knCXbw' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Годишен финансов отчет - приложение към индивидуален отчет</a><br/>Дата на обявяване: 29.04.2022 г. 15:25:17</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Годишен финансов отчет<br/>Година: 2020г.<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmZDQwZTdlYWEyZjQ2NDFkYzk5NzUxYTE1N2U5YTdjZjU-GZGRCwNVge6j8VGS5wIR2RuUg1J030t1nhm-kRabOA' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Годишен финансов отчет - приложение към консолидиран отчет</a><br/>Дата на обявяване: 29.04.2022 г. 15:25:17</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Годишен финансов отчет<br/>Година: 2021г.<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmNTY2YTQ2MmE0ODNmNGFiM2IxOWUwZWYzYTk5MzMzMmVsTX_xqQEdtdI5Rt_pb4JamULheR-2vZLJi4UOm7I5fA' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Доклад на независимия одитор</a><br/>Дата на обявяване: 05.05.2023 г. 08:27:59</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Годишен финансов отчет<br/>Година: 2021г.<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmNzU0ZTMwZTZlZjY0NDZkZDg4MjQxYzA2YjI3OWZlODC9_nt1QjKUVQdrksF_LIW0soaN2uUteB7lK-XPWARhPg' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>индивидуален</a><br/>Дата на обявяване: 05.05.2023 г. 08:27:59</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Годишен финансов отчет<br/>Година: 2021г.<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmMTk3ZDE0YzA4Yjk4NDBiNjg5Yzg1OTA0MGI2NDhlMjmYHsVNjH_oWRUwjljGmHNpeWprF-MzDwN5ezMPSmyM4w' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>консолидиран</a><br/>Дата на обявяване: 05.05.2023 г. 08:27:59</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Годишен финансов отчет<br/>Година: 2022г.<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmYTYxYTBjY2ViMzhhNGYxM2EwNjhiNzAzZTcwY2ZkMjgx2NNoEhxE9AnHXdS8JuBSzffc1yKupeJofwlwnipNQg' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>индивидуален</a><br/>Дата на обявяване: 25.08.2023 г. 15:59:39</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Годишен финансов отчет<br/>Година: 2022г.<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmNWYxMThhMzczZDg4NDRlZmE1M2JlM2I4YTRjNDQyZGTuMc5-gJjs-WC3RYUxt2roQczNkO-48We7xT46TqFYmA' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>консолидиран</a><br/>Дата на обявяване: 25.08.2023 г. 15:59:39</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Годишен финансов отчет<br/>Година: 2023г.<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmNDNkOTQ1NjU0ODgyNGIxOTkwZWQ5ODcyMTYxMDFhMWFS285JBxSS3iiTnogeXoFG1vkErmgXQS4oBlYXy659fQ' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i> индивидуален </a><br/>Дата на обявяване: 21.06.2024 г. 11:06:42</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Годишен финансов отчет<br/>Година: 2023г.<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmMTFkYzNmNzE1MjRlNDIwNGJjNTBiZDBiNzg2OWY2MjM7RVMqQUNesmGzsH-zbxYu_bohSq_vTPDqBSHQKZ3rmA' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i> консолидиран </a><br/>Дата на обявяване: 21.06.2024 г. 11:06:42</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Годишен финансов отчет<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmNTlmMzE2ZDY2Y2M5NDZmYzhjMWYzN2I1ZmRmNmRlMmE_xOGdnbPJ_xEDzVbq0_XxL9IgI1gfQLzD6YjLF1ThxA' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Годишен финансов отчет - индивидуален за 2024г.</a><br/>Дата на обявяване: 22.05.2026 г. 14:55:01</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Годишен финансов отчет<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmOWQyNWVmNWQ3ZjFmNGFhYWE5Y2EwYTY5NDNjNGUxYmQr1-FnSNEgnW_BnIWMpCfz2MxIXufBeLnNCbgNScP1iQ' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Годишен финансов отчет - консолидиран за 2024г.</a><br/>Дата на обявяване: 22.05.2026 г. 14:55:01</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Годишен финансов отчет<br/>Година: 2024г.<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmOGQzMWI4NjJhOWNiNGU0Y2FlYTZiMzc2Yjk5NzJkM2FaN1Dol_mPKgE6wQHH7YrPYwgqbdJMQFnhCwzESWwwkw' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Одиторски доклад към индивидуален ГФО за 2024г. </a><br/>Дата на обявяване: 22.05.2026 г. 14:55:01</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Годишен финансов отчет<br/>Година: 2024г.<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmODU4YjVjZGQxNDE0NDg0NThiMGYwNjI2ZWZiNjdiYjbBkSAExIPZQRxdkZaI8ImgzviH-X35QbRyh5XvOIillA' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Одиторски доклад към консолидиран ГФО за 2024г.  \r\n</a><br/>Дата на обявяване: 22.05.2026 г. 14:55:01</p></div>",
+                  "fieldEntryNumber": "20260522145501",
+                  "fieldEntryDate": "2026-05-22T14:55:01",
+                  "fieldActionDate": "2026-05-22T14:55:01",
+                  "fieldIdent": "10019B",
+                  "fieldOperation": 3,
+                  "order": "10010001"
+                },
+                {
+                  "nameCode": "CR_F_1001_L",
+                  "htmlData": "<div class='record-container record-container--preview'><p class='field-text'>Покана за свикване на общо събрание на акционерите<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmZmIyZjA1YjFlZGM5NDI3NDkxZjI0MjA1ZDljNWJjYjhKKs8CakszSxJvu4NlJHqjU95nWLsLVE6A_-MV8nMl5w' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>за 01.09.2008г.</a><br/>Дата на обявяване: 07.07.2008 г. 17:42:10</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Покана за свикване на общо събрание на акционерите<br/>Дата: 27.05.2009г.<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmZTMzNjAwMWRjZTIxNDgzYzg4NzkwYzkzOTkyYWVhYjgzoQRSL3zc8pXdR2WqsXwyEjlAgAdiogwY4O1r3vTUaw' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Покана за свикване на общо събрание на акционерите</a><br/>Дата на обявяване: 02.04.2009 г. 10:35:37</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Покана за свикване на общо събрание на акционерите<br/>Дата: 09.06.2010г.<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmODBiZTYwMDdhNDNhNDJlZWJiZjFmNTc4ZTE0OTQ4MmXkuDQHY-L6JM_HWW5VAwsQFB3Xwr3h4-K-07y67zoaRw' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Покана за свикване на общо събрание на акционерите</a><br/>Дата на обявяване: 04.05.2010 г. 15:15:09</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Покана за свикване на общо събрание на акционерите<br/>Дата: 27.06.2011г.<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmYzU4YzlmNjMxZjcxNDMyZjhkYjRjMzMwZGZlYjU4NGLehZK9nGNDqNk6jdXuH9qmX4S8CIFgay7i_7T3AEMAGQ' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Покана за свикване на общо събрание на акционерите</a><br/>Дата на обявяване: 26.05.2011 г. 14:02:14</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Покана за свикване на общо събрание на акционерите<br/>Дата: 11.09.2012г.<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmOThiYmFkNDRhNWZiNDc0ZWExYTU4YzM1ODQ2NTM5YmXI4TgsOA_AuiFd6lEH-5llYs4X2qLjdZrzzzSDoG67eQ' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Покана за свикване на общо събрание на акционерите</a><br/>Дата на обявяване: 10.08.2012 г. 14:01:31</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Покана за свикване на общо събрание на акционерите<br/>Дата: 10.12.2013г.<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmMjg3OGYwZWEwNGE4NDk5ZjlhMGJiMWRlOWQ5ZWU4ZDPzHoXiPvbmY35kLFPxFBAX4alb92QcNasf5Z_jm5p_0A' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Покана за свикване на общо събрание на акционерите</a><br/>Дата на обявяване: 07.11.2013 г. 16:39:17</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Покана за свикване на общо събрание на акционерите<br/>Дата: 24.06.2014г.<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmMDkzYjVjMmFkYTU2NDZhNmJhNmY3NzBjM2RiNzZlZTQ1HXhalLkGua2P-I3HID5zDJpAwW3US5YB25LDGEiOZg' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Покана за свикване на общо събрание на акционерите</a><br/>Дата на обявяване: 23.05.2014 г. 16:32:00</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Покана за свикване на общо събрание на акционерите<br/>Дата: 30.06.2015г.<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmMTExNWVhMzc4NGU5NDYzNGFiZGVkZTYyMzRiOTc0NGJZ8iD42mUdDj6HYwzeDcMRK77zw4jsR5htMfTCU3Pwuw' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Покана за свикване на общо събрание на акционерите</a><br/>Дата на обявяване: 29.05.2015 г. 10:53:58</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Покана за свикване на общо събрание на акционерите<br/>Дата: 18.05.2016г.<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmODljOTIxMzVkMWIyNGMyNzk2MGRhOWQwYWZiMzJjNDZMYKqCC992bkXM_hzXWAKdff9Y_xV2EryLC30fSMwaMw' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Покана за свикване на общо събрание на акционерите</a><br/>Дата на обявяване: 14.04.2016 г. 13:19:46</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Покана за свикване на общо събрание на акционерите<br/>Дата: 24.04.2017г.<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmYTZmMDI0NTc5ODdjNGRmMGFkNjcxMGRmNDQ1NThkNjjxOzvqYTphL9xEPu1k9sCgcdsXa14bKJqZ_nSe0HnObQ' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Покана за свикване на общо събрание на акционерите</a><br/>Дата на обявяване: 20.03.2017 г. 14:57:08</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Покана за свикване на общо събрание на акционерите<br/>Дата: 14.06.2017г.<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmYzlmYTc0MDg2YTA1NGVlMjkwNDFiYjBlNzBkNWI5MzLxc9FnNCS33DUlD1RDY_02gzbupQZ1BNy3bE-n0hkdTQ' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Покана за свикване на общо събрание на акционерите</a><br/>Дата на обявяване: 11.05.2017 г. 13:22:47</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Покана за свикване на общо събрание на акционерите<br/>Дата: 26.06.2018г.<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmMTRmZmE4NWRkN2I0NDQxNWJiOTdiZGY3NjdkNTU1OWINMlBSiedqQYvFgbxFQUR0VACvwsYeYkRFKAM9vNLs2g' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Покана за свикване на РГОСА - 26.06.2018</a><br/>Дата на обявяване: 15.05.2018 г. 09:30:14</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Покана за свикване на общо събрание на акционерите<br/>Дата: 31.10.2018г.<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmNzAyYTU3N2QzZDE2NDhlZmFkZTVkMDVkNTA4YjNiZjQr1XhJOLeV5qCsAgyAlklAeQNLWT-zzrpYqI5XJ0O2Jg' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Покана за свикване на общо събрание на акционерите</a><br/>Дата на обявяване: 19.09.2018 г. 15:37:16</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Покана за свикване на общо събрание на акционерите<br/>Дата: 17.12.2018г.<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmYTM0YTU1YjZhMjVkNDUyOWIzZWFjMTAwMzY3ZTMyMDjYJ5CvNWJBoZP5nMh9HdlKmvJs0mJiCyO3yu7YL4yzuA' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Покана за свикване на общо събрание на акционерите приложение 1</a><br/>Дата на обявяване: 09.11.2018 г. 14:38:35</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Покана за свикване на общо събрание на акционерите<br/>Дата: 17.12.2018г.<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmOGY0NTlhMzI2ODBkNDJmNTk2YzBjMjVjNzc1YzYwMGGNhx06hVKIp3Zfaya9n6h9qfXY5A3ux-UmNawjKlif_w' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Покана за свикване на общо събрание на акционерите</a><br/>Дата на обявяване: 09.11.2018 г. 14:38:35</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Покана за свикване на общо събрание на акционерите<br/>Дата: 17.12.2018г.<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmYTVkMjBjOTQwMDkzNDU3ZmJjMzAzMjI2MTdmZjQ4ZWY8TZGFaelyYsr9gFE_BOphi5d2OyZTCbtFvM7ou-h0CA' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Покана за свикване на общо събрание на акционерите приложение 1</a><br/>Дата на обявяване: 09.11.2018 г. 14:38:35</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Покана за свикване на общо събрание на акционерите<br/>Дата: 20.12.2018г.<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmODkyMWU3MGQwYjljNDI1MWJmODk4MjI2N2Q1MzhjZDezAl8XZM4dZvlbeL6WwV2lrWMh39oqRYGoVroQ5tTaHA' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Покана за свикване на общо събрание на акционерите</a><br/>Дата на обявяване: 19.11.2018 г. 08:24:17</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Покана за свикване на общо събрание на акционерите<br/>Дата: 27.12.2018г.<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmMDk4OTQ1MmIyOWRlNDcxZjgzMjNmNjFmMGEyNzgxNTdTgJ_S0QRhBmXQWeRmY4kMDbalBBru6Z8H2Aug6DchSQ' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Покана за свикване на общо събрание на акционерите</a><br/>Дата на обявяване: 22.11.2018 г. 14:28:10</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Покана за свикване на общо събрание на акционерите<br/>Дата: 25.02.2019г.<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmODZiN2IzODgyZTMzNGI3Zjg2ZmVkOWM0N2ZkMWQ4MmJ-PnbQGGuecyE_-3u9_lt5rkid8bi_rvqvODCPqEHBuw' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Покана за свикване на общо събрание на акционерите</a><br/>Дата на обявяване: 22.01.2019 г. 08:08:09</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Покана за свикване на общо събрание на акционерите<br/>Дата: 18.06.2019г.<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmZWRlMjM1MGVjM2NiNDU4M2I2YWM1Mjk3NWE2OTE3ODbVRfm0dxISf3kOfJRTKjgaWht4sdBydyD2N-xZ1P2-1Q' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Покана за свикване на общо събрание на акционерите</a><br/>Дата на обявяване: 16.05.2019 г. 18:03:27</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Покана за свикване на общо събрание на акционерите<br/>Дата: 25.07.2019г.<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmMzhjZWZmM2U0YmQ2NDZhMDk1YmU1NzhlYzZkN2JlZGHeUYTFQW0Td3I7oXrvHkOS1nJfzDz4K6YI9B_Fcx8sUw' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Покана за свикване на общо събрание на акционерите</a><br/>Дата на обявяване: 20.06.2019 г. 09:57:12</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Покана за свикване на общо събрание на акционерите<br/>Дата: 19.06.2020г.<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmYjE0NWM4MDJkMjI3NGU0YThkMjNlY2U0Y2RiMDFjNTNgJ9yTAjiyyZKEm_JIkrpqq1SJsMIz1syiZsLrU4ro_w' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Покана за свикване на общо събрание на акционерите</a><br/>Дата на обявяване: 15.05.2020 г. 13:06:40</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Покана за свикване на общо събрание на акционерите<br/>Дата: 20.08.2020г.<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmOTVmMWUzMzk4MDI4NDdjYWE2ODJiYjg2OGVkNmVkNDhKs9S8TNHlLYZ6IumpQZNaa4iAuLK8gEUFF3Pr0Ilkig' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Покана за свикване на общо събрание на акционерите</a><br/>Дата на обявяване: 20.07.2020 г. 16:28:29</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Покана за свикване на общо събрание на акционерите<br/>Дата: 24.09.2020г.<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmOGQyMWRhYmJlNmEyNDg1YTk2ZTA3M2VkYzMzMTJiY2MrDFwhhrj_jSvHEf0HtYpoRUjn6F57XJmZDbuYad0Bxw' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Покана за свикване на общо събрание на акционерите</a><br/>Дата на обявяване: 21.08.2020 г. 13:33:41</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Покана за свикване на общо събрание на акционерите<br/>Дата: 06.08.2021г.<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmNzVjMTc0NDg5MTY1NGZhNmFhOTlmODgxZjY4Y2Q4Mzg5VNsSxxft_YJ1Vit83jFgHTqlGM-X1bugD6ncSHEjDg' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Покана за свикване на общо събрание на акционерите</a><br/>Дата на обявяване: 05.07.2021 г. 13:43:01</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Покана за свикване на общо събрание на акционерите<br/>Дата: 16.06.2022г.<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmOWYxZDIwZWNjYjUzNDBiMmIyZTZhMTk0MzllYTQxOGZVZD7igQwjfFg0XoHMghTIEyNhl7BVct8vQIH8Agy70Q' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Покана за свикване на общо събрание на акционерите</a><br/>Дата на обявяване: 05.05.2022 г. 16:13:25</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Покана за свикване на общо събрание на акционерите<br/>Дата: 15.06.2023г.<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmZjFiODc0NzMyOGQ2NGI5OWIyMDdiNzZlZTc4N2U0MjKbIijOv3VP4tDarqqIyeut_LDQiLkVGHKk0BcS94cGgw' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Покана за свикване на общо събрание на акционерите</a><br/>Дата на обявяване: 10.05.2023 г. 15:30:55</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Покана за свикване на общо събрание на акционерите<br/>Дата: 14.06.2024г.<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmNjZhNGQzOGEwNTNmNDhlMzljYjMwNjI1N2RkYmViZmMCGdMwnKzjkkOgzeeBKsLC7ueij0XKb0aJN7BfnKrWHg' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Покана за свикване на общо събрание на акционерите</a><br/>Дата на обявяване: 08.05.2024 г. 11:59:38</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Покана за свикване на общо събрание на акционерите<br/>Дата: 05.05.2025г.<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmNDZhODY3NzMzMjIxNGI3YWI2ODRiNTE4NmFmYzJhMGWr06Ua6Azn_-YLKv3tohpybgst-O2ydhGKW1HtWbSQUQ' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Покана за свикване на общо събрание на акционерите</a><br/>Дата на обявяване: 03.04.2025 г. 15:26:27</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Покана за свикване на общо събрание на акционерите<br/>Дата: 20.06.2025г.<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmY2MzZmIwNGE4YjQzNDI5NmI1MDFkN2E5NDM2NThmMzM47o71iAEltHjIYRoE4xOTko1y4KhmWs4SlFlx9iouaA' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Покана за свикване на общо събрание на акционерите</a><br/>Дата на обявяване: 20.05.2025 г. 12:16:26</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Покана за свикване на общо събрание на акционерите<br/>Дата: 26.06.2026г.<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmMGIxNzM5ZjMzNDU5NDU1NThjYTdhYjBlMzQwZGEzOTHmBQrL0N900BPEoCf45CZkFzWNz7tqCxGT7sb3iwAlDg' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Покана за свикване на общо събрание на акционерите</a><br/>Дата на обявяване: 22.05.2026 г. 14:56:19</p></div>",
+                  "fieldEntryNumber": "20260522145619",
+                  "fieldEntryDate": "2026-05-22T14:56:19",
+                  "fieldActionDate": "2026-05-22T14:56:19",
+                  "fieldIdent": "10019C",
+                  "fieldOperation": 3,
+                  "order": "10010002"
+                },
+                {
+                  "nameCode": "CR_F_1001_L",
+                  "htmlData": "<div class='record-container record-container--preview'><p class='field-text'>Доклад на управителния орган<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmOWIzMzlmYWJjMGEyNGVmYjlhYzAxODJmMzI5Y2U1YmJ35m6FUhbeSGuPHq-77olVe0H3TIESDcgwH4wBzi_7XQ' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Доклад на управителния орган</a><br/>Дата на обявяване: 29.05.2009 г. 15:57:59</p></div>",
+                  "fieldEntryNumber": "20090529155759",
+                  "fieldEntryDate": "2009-05-29T15:57:59",
+                  "fieldActionDate": "2009-05-29T15:57:59",
+                  "fieldIdent": "10019O",
+                  "fieldOperation": 3,
+                  "order": "10010013"
+                },
+                {
+                  "nameCode": "CR_F_1001_L",
+                  "htmlData": "<div class='record-container record-container--preview'><p class='field-text'>Друг акт<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmZTFjNWUxMWRhZjI5NDUyODlkNjFlOTIxNDc2OTFjZGaBbRUILE45CXV9FpgR0TSoTasoP8TogtqCXiRHl0TKxg' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Друг акт / Доклад на независимия одитор</a><br/>Дата на обявяване: 29.05.2009 г. 15:57:59</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Друг акт<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmYjJiM2QyNTIyMDI3NDIxMGEwZDQ0ZGIyZTIyMjE1M2RN3MVxRKndqC89EGCOWa6wbRLN5jfXC0j6yACmesLwsg' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Друг акт /Доклад на Директора за връзки с инвеститорите за дейността през 2008г.</a><br/>Дата на обявяване: 29.05.2009 г. 15:57:59</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Друг акт<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmNDllOTc2M2ZhNGIxNDZjZWFkZGMyNTJkNGFhYTMwYjFuI6Qg-OM2T_ZbBdnZt-OLy-fas-aMmwoBZODqARaQEw' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Друг акт - Доклад ДВИ 2009г.</a><br/>Дата на обявяване: 21.06.2010 г. 16:15:10</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Друг акт<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmM2FiMmE3MWMzZGMyNDZmY2I1OWYzZDkzZmM4ZGE1N2LMeCtnk8dbtIYwoy2LXMHMEviEPlfAOceLK2mueQOtoQ' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Друг акт - Списък присъствали акционери</a><br/>Дата на обявяване: 13.07.2011 г. 18:10:17</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Друг акт<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmMDRlZDViNWU3MzhiNDRhMmE4MjkyNDkyZTFmNmNkY2L4WtNG1CzwLMfmr5-f6-QZxtw0Xz3yLVmNCi4FN89wmA' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Друг акт - Протокол ГОАС 2010</a><br/>Дата на обявяване: 13.07.2011 г. 18:10:17</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Друг акт<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmMTI1YzM0NWFhMTIxNGNmY2JmYzEzZWFiNzg5ZWY0ZmO0vVPsOBN7XaDrch-dQCp2dcrGxoA4CBcgQIlIU4FLng' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Друг акт - Доклад ДВИ 2010</a><br/>Дата на обявяване: 13.07.2011 г. 18:10:17</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Друг акт<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmZmMyNGQ0ZTU0MWEyNDI1MWJiMDNlZWQ1YWQxNjM2YzYzGTOMEyBNfiNfmHqLhDzLDs4MJ5Sxk5jnAwfTIgKGjw' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Друг Протокол 7 НС</a><br/>Дата на обявяване: 10.08.2012 г. 14:01:31</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Друг акт<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmOWIzYmYzYjg1MjQ2NDc2NzgwNDIyYWQyYzVhNDhjMDQ4XFVr3riHz0KZb5BDrdl-4a9kEAO20AAX3TgMcQjOlw' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Друг Протокол 4 УС</a><br/>Дата на обявяване: 10.08.2012 г. 14:01:31</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Друг акт<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmMDYzYmRkMWIzNjRhNDgwOGE5MDYyZWVjYTU4MjY3YmNZiVnVfTorE2JWqULWJObonqwHYR4AHiteVR4m9ChS-w' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Друг: Протокол 3 УС</a><br/>Дата на обявяване: 10.08.2012 г. 14:01:31</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Друг акт<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmYTJkOTMwY2ZhNDNhNDMzMmIwODg1ZTA2YjE5MWVjNjUHMz4EfrLkmG8T1u-34UDTplG3MA9B4si9GnBzwI0BBw' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Друг акт</a><br/>Дата на обявяване: 26.04.2017 г. 16:03:49</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Друг акт<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmYTZlYmQ3MjI4YTczNDU3MWI1NTBlMTY1OTE4NDdjN2JI6cj1iKf9aXiuCJRLaQfGWyttKd9pfGQXQzgo8kIUrg' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Друг акт - мотивиран доклад</a><br/>Дата на обявяване: 09.11.2018 г. 14:38:35</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Друг акт<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmY2UxNGZhNmVkNDQ1NGY0MGExNGYzOWIwYzFlZjM4ODX_cduAZoz5uANaXumfCBJ0klk0ZScQvOEmrdMX5r9BzA' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Друг акт - Протокол на УС 12.11.2018</a><br/>Дата на обявяване: 19.11.2018 г. 08:24:17</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Друг акт<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmNGVjZmZlMWY3ZjAwNGY2Mzg2Yjk1Zjk2N2ViNWIyNGYor4Y9UEqWE2SAxHnPFNZVyamAHBjW4dtGmLOPYT3zkQ' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Друг акт - Протокол на НС 09.11.2018</a><br/>Дата на обявяване: 19.11.2018 г. 08:24:17</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Друг акт<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmZWM2YzEyYmFiYjQwNDViOWJhYzc5YzMzZTRiMmMwNjEr8IUGgSLyOOk3ayaW3b3jS9__ks83O_ghdqeuBKx1SA' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Друг акт - Протокол на УС 09.11.2018</a><br/>Дата на обявяване: 19.11.2018 г. 08:24:17</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Друг акт<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmOGY2YTQ4OTI3OGQwNDE4ZDllMjc1MDg5MjFmNDE0ZDGuYwyMgDi0rxlYuHEMh4PpOVAmM7UVwfeA4fr5zWewIA' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Друг акт - Протокол на УС 01.11.2018</a><br/>Дата на обявяване: 19.11.2018 г. 08:24:17</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Друг акт<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmOTE3MWZmNWFiYzY5NGU0ZjljOWZhYmQ2M2ZhNzM4MDd2jyst5OXA4ETOz03fNBUWpw0uhuDePbnq3EipAjR94g' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Друг акт - Доклад на директор връзки с инвеститорите</a><br/>Дата на обявяване: 19.11.2018 г. 08:24:17</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Друг акт<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmYjc4ZTVmMmVmNTU3NDQxMzg0NjMwMzgwNjI0OTE2NzPmphUqBWO2AsOO_n1N2flfI8IVART-ishMhfggdu0wxA' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Друг акт - Доклад на одитния комитет</a><br/>Дата на обявяване: 19.11.2018 г. 08:24:17</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Друг акт<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmZGU4NDM1M2ZjODhlNDIwYzllNDYyN2NlZjkwZjhmN2W7jjk8kkHpBoJu8l_tsuBkUC3UekMonao_X18EO7N5cA' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Друг акт - Доклад за дейността</a><br/>Дата на обявяване: 19.11.2018 г. 08:24:17</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Друг акт<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmYzk2YTQxNDkyZmU1NDBjYjk4M2YwNzA1ZjBmNjQwYWOClDh56QBBid6eUhX_NYjxSHAlj1lXHEXTN_vWV0g8FQ' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Друг акт - Междинен финансов отчет</a><br/>Дата на обявяване: 19.11.2018 г. 08:24:17</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Друг акт<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmMGI3YmQ4MWY5Yjc5NDcyNWEyMWFlNmJlMTExODRlMWZODZ2ZujLFSAuVUmNzZpwDOFR2Mg6DmJbBH4bcxOjxtw' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Друг акт - Доклад на одитора</a><br/>Дата на обявяване: 19.11.2018 г. 08:24:17</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Друг акт<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmNDAwNTIxZjA2NzQ1NGQ1MmE4YTU3YTY0YjRjNTY4NDXImUCy-J9Vm-Jj6Funf9q5bLUwxJS2Xd1yq4RAML4r2g' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Друг акт - Пълномощно образец</a><br/>Дата на обявяване: 22.11.2018 г. 14:28:10</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Друг акт<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmOTk2YWY2NmZiY2ZhNDlhYzg3NzM3MWE3ZjZhMzVjNmEFMi2Nn4HLKRaWjyptfSOkkIrJpfKqxRPRCAMmo-Sk5Q' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Друг акт - Мотивиран доклад</a><br/>Дата на обявяване: 22.11.2018 г. 14:28:10</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Друг акт<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmODc0NmY0ZmQ4MDZiNGIwOWE1ZGRhOWIzYzY0MzAwY2TRR7MdmwCR9vJuAp-wVap5xlA1dxFYB6lS5-ca6y6yUw' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Друг акт- Протокол ИОСА</a><br/>Дата на обявяване: 31.07.2019 г. 16:34:40</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Друг акт<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmY2Q3OTQ2N2Q2NDAyNDY5Y2JmYTcyNmVlMzQyNjg3MjXy4Z16M-cujE3K1slpKT1LIQ6nqpukBpzkNLYAnSmR-w' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Друг акт: Протокол на УС</a><br/>Дата на обявяване: 21.08.2020 г. 13:33:41</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Друг акт<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmYWU5MmJmOGNjZTQ2NDgyY2E2YTdlZjZmNmQ4Zjk5NWOktWT-4jiUdPv5e6P-j1Ot1gbkhKfhKs65Bk0fL6WQZQ' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Друг акт: Протокол на НС</a><br/>Дата на обявяване: 21.08.2020 г. 13:33:41</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Друг акт<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmOTc5NTM4NGNhZGUwNGU2MDhmMzcyYjFjNjBlMDA2ZGYiDlg-PfHYGQYijMyGpCFtD8w_-qkxIyGPR4xTDC8fVw' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Друг акт: Пълномощно</a><br/>Дата на обявяване: 21.08.2020 г. 13:33:41</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Друг акт<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmOGViMDY4MTliZmYzNDA0MDkwYWMxYjRhMmU5YTUxZjW7PGxPwYFV0ZFY7DlVfymvXozYvZrqsv3tC9J9M5SSDQ' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Друг акт: Политика за възнагражденията</a><br/>Дата на обявяване: 21.08.2020 г. 13:33:41</p></div>",
+                  "fieldEntryNumber": "20200821133341",
+                  "fieldEntryDate": "2020-08-21T13:33:41",
+                  "fieldActionDate": "2020-08-21T13:33:41",
+                  "fieldIdent": "10019S",
+                  "fieldOperation": 3,
+                  "order": "10010017"
+                },
+                {
+                  "nameCode": "CR_F_1001_L",
+                  "htmlData": "<div class='record-container record-container--preview'><p class='field-text'>Годишен доклад за дейността<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmNzg5NzJmODUwNjVhNDUzM2IyZGI3MWE3YzU3YzA3ODmwZ4NwAAOQ0GuJwkb6k622fL6TPYk2rthAV-S3U3Iu4w' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Годишен доклад за дейността към индивидуален отчет 2017г</a><br/>Дата на обявяване: 03.09.2018 г. 12:13:29</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Годишен доклад за дейността<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmYTJjMjkxOWRhMTQ5NGM3MjhiOTdmNmU0ZWUxMmU5MWVseR6OBttmAECF5YlH-EoRgYxmOTAChLM27hBMQnxnXg' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Годишен доклад за дейността към консолидиран отчет 2017г</a><br/>Дата на обявяване: 03.09.2018 г. 12:13:29</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Годишен доклад за дейността<br/>Година: 2017г.<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmOTdkN2I3YWU3ZjkyNDNjZGFlMDIzYzgwMDZhY2UwNWHEwJWsRyiDVi7eGpPtty4h1bVFjjPIeoclON-7yvGg7A' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Годишен доклад за дейността на одитния комитет</a><br/>Дата на обявяване: 03.09.2018 г. 12:13:29</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Годишен доклад за дейността<br/>Година: 2018г.<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmODI2NGJlZWI3MmVlNDAxMGJkNGNjZGNjY2IwMmMwN2Q0u2skm2d_eTYbWo9ylRvMm7cXqQIoHrH8tMOFyw7KZg' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Годишен доклад за дейността- индивидуален</a><br/>Дата на обявяване: 26.07.2019 г. 16:23:20</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Годишен доклад за дейността<br/>Година: 2018г.<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmNzM2MDQ0NzA1MzVmNDkyNmFjMzNhNTM2MDFkNTQ4ZWb7_mPdMbXqXakTlZOCTPleIWTa3C49WSYhZk5S5aLVKQ' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Годишен доклад за дейността- консолидиран</a><br/>Дата на обявяване: 26.07.2019 г. 16:23:20</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Годишен доклад за дейността<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmY2RjYmU3NmU2YTUyNDk5MTlmNDQ4YTA3NGRhYjRlYjXKoKmL3fkMpCAeFOL-r2lwOV9T64b_7SNeaOtYMaf5ug' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Годишен доклад за дейността- индивидуален</a><br/>Дата на обявяване: 15.07.2020 г. 16:13:56</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Годишен доклад за дейността<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmMDdiNDEyNjMwMzk2NDQzNDg3ZDJjYWJmOGY5ZjIxN2EqbPuNOxgtOvsGTN8XswjHW0chbzinL-7Nw46NeFinpQ' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Годишен доклад за дейността- консолидиран</a><br/>Дата на обявяване: 15.07.2020 г. 16:13:56</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Годишен доклад за дейността<br/>Година: 2020г.<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmYTAwNTA0NGExODQyNDYyMzg1MTY0ZTNmYjBlYzYwMTMGUsTHqOtd0QivM6qS4QQu39LQcYHwwwX8KrOSFZzt8g' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Годишен доклад за дейността към инивидуален отчет</a><br/>Дата на обявяване: 29.04.2022 г. 15:25:17</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Годишен доклад за дейността<br/>Година: 2020г.<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmYWJiMTZhMzNjN2ZhNDIzYjhiZWY0ZmU1ZWE0OTUyNzWYr-_FpLb1Hn5VwqChwQuPGVTVRSmYKljrOtxTsLTxOg' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Годишен доклад за дейността към консолидиран отчет</a><br/>Дата на обявяване: 29.04.2022 г. 15:25:17</p></div>",
+                  "fieldEntryNumber": "20220429152517",
+                  "fieldEntryDate": "2022-04-29T15:25:17",
+                  "fieldActionDate": "2022-04-29T15:25:17",
+                  "fieldIdent": "1001BH",
+                  "fieldOperation": 3,
+                  "order": "100187"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "subUICType": 13,
+      "nameCode": "CR_GL_CURRENT_CONSTUTIVE_ACT_L",
+      "order": "20001",
+      "subDeeds": [
+        {
+          "subUIC": "0016",
+          "subUICType": 13,
+          "subDeedStatus": 0,
+          "sectionName": "CR_GL_ANNOUNCED_ACTS_L",
+          "subDeedIsClosed": false,
+          "groups": [
+            {
+              "groupID": 451,
+              "nameCode": "CR_GL_CURRENT_CONSTUTIVE_ACT_L",
+              "order": "20001",
+              "fields": [
+                {
+                  "nameCode": "CR_F_1001_L",
+                  "htmlData": "<div class='record-container record-container--preview'><p class='field-text'>Актуален дружествен договор/учредителен акт/устав<br /><a href='DocumentAccess/MTAyMDAzNjI2JmUmYTcyNDIxZDYwYzllNGMxYTlhNGU3YWQyNzFmOTM1OTWSMqGlH0sOEYz1yuAjtbJartQZQpd4rG5RQeKDuPzEsQ' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Актуален учредителен акт</a><br/>Дата на обявяване: 07.02.2008 г. 13:39:26</p></div>",
+                  "fieldEntryNumber": "20080207133926",
+                  "fieldEntryDate": "2008-02-07T13:39:26",
+                  "fieldActionDate": "2008-02-07T13:39:26",
+                  "fieldIdent": "1001AJ",
+                  "fieldOperation": 3,
+                  "order": "10010029"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "subUICType": 500,
+      "nameCode": "CR_GL_ACTUAL_PERSON_OWNERS_L",
+      "order": "20016",
+      "subDeeds": [
+        {
+          "subUIC": "001",
+          "subUICType": 500,
+          "subDeedStatus": 2,
+          "colapsableLinkName": "Номер по ред: 001, Основание за вписване: Чл.63, ал.1 и 4 от Закона за мерките срещу изпиране на пари",
+          "sectionName": "CR_GL_ACTUAL_PERSON_OWNERS_L",
+          "subDeedIsClosed": false,
+          "groups": [
+            {
+              "groupID": 501,
+              "nameCode": "CR_GL_BASIC_INFORMATION_L",
+              "order": "20017",
+              "fields": [
+                {
+                  "nameCode": "CR_F_529_L",
+                  "htmlData": "<div class='record-container record-container--preview'><p class='field-text'> Чл. 63, ал. 1 и ал. 4 от Закона за мерките срещу изпиране на пари</p></div>",
+                  "fieldEntryNumber": "20190521115219",
+                  "recordMinActionDate": "2019-05-21T11:52:19",
+                  "fieldEntryDate": "2019-05-21T11:52:19",
+                  "fieldActionDate": "2019-05-21T11:52:19",
+                  "fieldIdent": "05290",
+                  "fieldOperation": 3,
+                  "order": "05290"
+                },
+                {
+                  "nameCode": "CR_F_530_L",
+                  "htmlData": "<div class='record-container record-container--preview'><p class='field-text'>001</p></div>",
+                  "fieldEntryNumber": "20190521115219",
+                  "recordMinActionDate": "2019-05-21T11:52:19",
+                  "fieldEntryDate": "2019-05-21T11:52:19",
+                  "fieldActionDate": "2019-05-21T11:52:19",
+                  "fieldIdent": "05300",
+                  "fieldOperation": 3,
+                  "order": "05300"
+                }
+              ]
+            },
+            {
+              "groupID": 580,
+              "nameCode": "CR_GL_LEGAL_PERSON_DIRECTLY_INDIRECTLY_CONTROL_L",
+              "order": "20020",
+              "fields": [
+                {
+                  "nameCode": "CR_F_537_L",
+                  "htmlData": "<div class='record-container record-container--preview'><p class='field-text'><b>Фирма/Наименование: </b>Трансстрой Холдинг <br/>Правна форма: акционерно дружество<br/>Изписване на чужд език: Transstroy Holding AD<br/>Номер на вписване в регистъра: 102664474<br/>Седалище и адрес на управление<br/>Държава: БЪЛГАРИЯ<br/>Област: Бургас, Община: Бургас<br />Населено място: гр. Бургас, п.к. 8000<br/>бул./ул. Успенска № 8<br/><b>Представител: </b><br/>Николай Милев Милев, Държава: БЪЛГАРИЯ<br/></p></div>",
+                  "fieldEntryNumber": "20190521115219",
+                  "fieldEntryDate": "2019-05-21T11:52:19",
+                  "fieldActionDate": "2019-05-21T11:52:19",
+                  "fieldIdent": "05370",
+                  "fieldOperation": 3,
+                  "order": "05370"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "fullName": "\"ТРАНССТРОЙ-БУРГАС\" АД",
+  "hasInstructions": true,
+  "hasAssignments": true,
+  "hasCompanyCasees": true,
+  "hasLegalFormChange": false,
+  "hasNotifications": false,
+  "hasForeignParentCompany": false,
+  "hasForeignBranches": false
+}

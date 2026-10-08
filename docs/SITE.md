@@ -44,6 +44,9 @@ For CI/CD (GitHub Actions building and deploying this to Pages), see
 | `flags/index.html` | All flags: a tier filter (segmented control: Всички / Нарушения / Сигнали / Непрозрачност) alongside severity/rule/**година** filters and search (all combine), tier+severity+rule chips per row, counts per tier and per severity. The row's date shows both the event year and the detection date (see "Event year" below) — a small bold year above the muted detection date, right-aligned next to the chips. Each row is a native `<details>`/`<summary>` — no JS needed to expand it — revealing the explanation, legal basis, documents to request (ЗДОИ), and a small numbers list parsed out of `details_json` (never the raw JSON), then a closed-by-default "Източници" box (see "Provenance box" below). Renders an empty state gracefully if no flags exist yet. |
 | `flags/<id>.html` | One permalink page per flag: title = rule label, tier + severity chips, message, explanation, legal basis, documents list, numbers, an "Източници" section (collapsible, closed by default), subject link, first/last-seen dates, a 3-step "Как да поискате документите" box, and a "Копирай текст за заявление" `<details>` with a static, pre-filled plain-text ЗДОИ request template (copy button via `static/app.js`). Linked from every flag row and from Telegram deep links `flags/#<id>` (the bare numeric `id` is the row's anchor on the index page too). |
 | `methodology.html` | Sources, update cadence, the eop/SIGMA dedupe heuristic, a "За какви нарушения следим" section (what misconduct the three tiers cover, in plain Bulgarian, incl. which Наказателен кодекс offences a *signal* may relate to once documents confirm it), a data-driven "Правила за сигнали" section (one entry per rule — label, tier, what it detects, thresholds, legal basis, suggested documents — built from `build.py`'s `METHODOLOGY_RULES`, content sourced from `docs/RULES.md`), "Какво можете да направите" (the ЗДОИ route and which bodies to signal — АДФИ, АОП, Сметна палата, managing authority/OLAF, prosecution only with evidence), and the "flags are not proof of wrongdoing" disclaimer. |
+| `map.html` | "Карта на разходите" — a Leaflet map, one circle marker per settlement of Община Несебър (14 towns/villages + the resort areas Слънчев бряг and Елените), sized by sqrt-scaled all-years (or selected-year) spent, popup with plan/spent/objects/contracts/flags and a link to the settlement page; a year selector (segmented control); a toggle that adds a live АГКК/КАИС cadastre overlay (a plain Leaflet image overlay); a curated-pins layer; a ranking table below the map. See "Карта по населени места" below. |
+| `settlements/index.html` | Ranking table of all 16 settlements: all-years spent, last-3-years columns, objects, contracts, flags, plus an "unassigned" row so the table's numbers are traceable against the budget pages. |
+| `settlements/<key>.html` | One settlement's detail: header (name/kind/EKATTE), 4 KPI cards, a per-year table (plan/spent/objects/change vs. previous year, with a note on any year using a fallback month), a sortable objects table (name/period/plan/spent/cadastral identifiers linked to KAIS), a contracts list, a flags list, and a "Как е изчислено" box naming exactly which rows/aliases/cadastral prefix produced the numbers. |
 | `data/index.html` | Links to every export below, plus a summary of current counts. |
 
 ## Data exports (`site/data/`)
@@ -54,7 +57,104 @@ For CI/CD (GitHub Actions building and deploying this to Pages), see
 | `budget_line_items.csv` | Every `budget_line_items` row, all months and units (not just the consolidated `Общо` one shown in the HTML pages), with `row_type` (`object` / `paragraph_subtotal` / `function_subtotal` / `grand_total`) pulled out of `extra_json`. |
 | `cash_execution.csv` | Every `cash_execution_lines` row, all months, both `приходи`/`разходи` sections. |
 | `flags.json` | All flags: `tier`, `tier_label`, `severity`, `message`, `explanation`, `documents` (list), `law_ref`, `details`, `event_year` (int or null, see "Event year" below), `sources` (the raw `sources_json` provenance list, see docs/RULES.md), `subject_href`/`subject_label`, `permalink`, and the usual timestamps — whatever optional columns the live `flags` table currently has, see "Flag schema" below. |
+| `map.json` | GeoJSON `FeatureCollection`, one Point feature per settlement (`properties`: key/name/kind/ekatte/href, `all_years` and per-year `plan`/`spent`/`objects_count`, `contracts_count`/`contracts_total_eur`, `flags_count`), plus top-level `unassigned` (same shape, for objects with no recognised settlement), `years_available`, `notes` (which years used a fallback month instead of December) and `pins` (curated exact coordinates, see below). Consumed client-side by `map.html`'s own script — never embedded inline in the HTML. |
+| `settlements.csv` | The same per-settlement totals as `map.json`, flattened to one row per settlement (plus an `unassigned` row), for spreadsheet use. |
 | `meta.json` | Build timestamp, headline counts, and the SIGMA-match statistics also quoted in `methodology.html`. |
+
+## Карта по населени места (the map feature)
+
+`src/nessebar_budget/web/geo.py` turns the budget ledger, contracts and flags
+into "where does the money go, by settlement" — deterministically, by text
+matching, never by geocoding or guessing.
+
+**Settlement data.** `src/nessebar_budget/web/data/settlements.json` is a
+static, hand-verified list of the municipality's 14 EKATTE-coded settlements
+plus the two resort areas (Слънчев бряг, in Несебър's own землище; Елените,
+in Свети Влас's) that have no EKATTE of their own. For each: `key` (slug),
+`name`, `kind` (`град`/`село`/`курорт`), `ekatte`, `lat`/`lon`, `aliases` (the
+literal strings matched in text) and a `source` (URL + 2026-10-08). EKATTE
+codes were cross-checked two ways — against bg.wikipedia.org's "Селище в
+България" infobox for each settlement, and against the KAIS cadastral-id
+prefixes already present in this project's own scraped `object_name`/`title`
+text (e.g. "ПИ 61056.501.505, с.Равда" confirms EKATTE 61056 = Равда).
+Coordinates are each settlement's top OpenStreetMap Nominatim result. The
+build **never** calls the network — this file is read once, at import time.
+
+**Detection (`detect_settlement`/`detect_settlements`).** Every alias is
+matched case-insensitively, at a word boundary, with periods/whitespace
+treated as flexible ("Св.Влас", "Св. Влас" and "Свети Влас" all match the
+same settlement). Cadastral identifiers ("ПИ 51500.501.4") are also
+resolved, via their 5-digit EKATTE prefix. When several settlements are
+named in one string, `detect_settlement` returns the one appearing
+**first in the text**; `detect_settlements` returns the full ordered list, so
+callers can flag the text as ambiguous (`len(...) > 1`). Capital-programme
+objects use `object_settlements` instead: column B of the report is
+"наименование, местонахождение и функционално предназначение", and the
+municipality writes the location after the final comma ("... път Слънчев
+бряг - Тънково, с.Тънково"), so when that tail names exactly one settlement
+it wins over places mentioned earlier in the name (verified against the
+2024-12 report, sheet "Общо", row 248). The one deliberate
+exception: the bare alias "Несебър" does **not** match when it's clearly
+naming the *municipality* as contracting authority ("Община Несебър", "общ.
+Несебър") rather than the town as a location — otherwise nearly every
+procurement title (which almost all say "за нуждите на Община Несебър"
+somewhere) would wrongly look like it's "in" the town of Несебър. Every
+other alias, for every other settlement, has no such ambiguity in this
+project's data (see `tests/test_geo.py` for the real DB strings this was
+verified against, including the "Баня" case: only the `с.`-prefixed forms
+are aliases, since bare "баня" is also the ordinary Bulgarian noun for
+"bath/spa").
+
+**Aggregation (`build_map_data`).** Reuses `build.py`'s own `_load_budget`/
+`_row_type` (via a function-local import — `geo.py` can't import `build.py`
+at module level, since `build.py` imports `geo`), so it only counts real
+`object`-type rows of the consolidated `Общо` unit, exactly like
+`budget/<period>.html` does. For each year, the **December** report is used
+as that year's full-year snapshot; when a year has no December report yet
+(in progress, or a scraping gap — 2023 and 2026 at the time of writing), the
+latest available month is used instead and the year is annotated with a
+`note` saying so, both in the GeoJSON and on each settlement's own page. An
+object naming several settlements is counted only under the **first** one
+(so settlement totals plus `unassigned` always sum to exactly the same
+grand total `budget/<period>.html` shows — `tests/test_site_build.py`
+checks this for one clean December year); a contract naming several
+settlements, by contrast, is counted in **full** under every one of them
+(there being no reconciliation requirement for contracts the way there is
+for the budget ledger), so the sum of settlements' contract totals can
+exceed the sitewide contracts total. Flags are matched on
+`details_json.object_name`, falling back to the linked contract's title.
+
+**Cadastre overlay caveat.** `map.html`'s "Кадастрална карта (АГКК)" toggle
+adds a plain `L.imageOverlay` whose picture is re-requested from the public
+АГКК/КАИС ArcGIS server's `export` endpoint
+(`arcgisnopki/rest/services/InternalKais/CmcrPublic/MapServer/export`,
+layers 1/2/15/17, Web Mercator bbox = the current viewport) on every
+move/zoom, from zoom 17 up (below that the server draws almost nothing).
+No ArcGIS client library is used on purpose: the server sends no CORS
+headers and its service-metadata endpoint is blocked by browsers (ORB), so
+Esri Leaflet never gets past initialisation; a bare `<img src>` works
+because the browser's own `Referer` header is what the server requires
+(verified in Chrome on 2026-10-08). It is a visual reference only, not part
+of this site's own data, and it may be temporarily unavailable (it's someone
+else's server).
+KAIS's own map page (`kais.cadastre.bg/bg/Map`) has no verified deep-link
+format for opening one specific parcel by identifier (probed with query
+strings on 2026-10-08 — it's a client-rendered SPA that ignores them), so
+every cadastral-identifier link on this site opens the plain map page and
+shows the identifier as text to paste into KAIS's own search box —
+`geo.kais_url()`.
+
+**Curated pins (`data/locations/pins.csv`).** The map's settlement markers
+are one point per settlement, not per object. A volunteer can add an exact,
+verified coordinate for one specific object (found in KAIS) as a row in
+`data/locations/pins.csv` (columns: `object_name`, `period`, `lat`, `lon`,
+`cadastral_id`, `verified_by`, `source_note`, `verified_at`) — see
+`data/locations/README.md` for the step-by-step. `geo.ensure_pins_scaffold()`
+creates that CSV (header row only) and its README on first build if they
+don't exist yet, and `geo.load_pins()` reads whatever rows are there into
+`map.json`'s `pins` array, rendered as a second Leaflet layer. No pin is
+required for a settlement's own totals to show up — pins are purely an
+optional, human-verified precision layer on top.
 
 ## Dedupe & enrichment: ЦАИС ЕОП + SIGMA
 

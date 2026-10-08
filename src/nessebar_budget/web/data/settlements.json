@@ -1,0 +1,232 @@
+{
+  "_readme": "Static, hand-verified settlement list for Община Несебър. No network call is ever made from the site build -- this file is the one and only source for src/nessebar_budget/web/geo.py's SETTLEMENTS. EKATTE codes were cross-checked two ways: (1) against bg.wikipedia.org's '{{Селище в България}}' infobox for each settlement (field 'екатте'), fetched 2026-10-08; (2) against the KAIS cadastral-identifier prefixes actually seen in this project's own scraped object_name/title text (e.g. 'ПИ 61056.501.505, с.Равда' confirms EKATTE 61056 = Равда). Both checks agree with each other and with the EKATTE codes given in the task brief for all 14 settlements. Coordinates are the top Nominatim (OpenStreetMap) result for '<name>, Община Несебър, България' (or '<name>, Несебър/Свети Влас, България' for the two resort areas, which have no EKATTE of their own), fetched 2026-10-08 with User-Agent 'nessebar-budget-monitor (dev@gmu.online)' at 1 request/second. Resort areas (Слънчев бряг, Елените) have no EKATTE: they are built-up areas inside the land territory (землище) of a town, not separate EKATTE-coded settlements -- see 'ekatte_territory' on those two entries.",
+  "settlements": [
+    {
+      "key": "nesebar",
+      "name": "Несебър",
+      "kind": "град",
+      "ekatte": "51500",
+      "lat": 42.6607865,
+      "lon": 27.7167464,
+      "aliases": ["Несебър", "гр.Несебър", "гр. Несебър", "гр Несебър", "Несебър-стар град", "Несебър - стар град", "Несебър – нов град"],
+      "source": {
+        "ekatte": "https://bg.wikipedia.org/wiki/Несебър (infobox 'Селище в България', поле екатте) -- cross-checked against KAIS identifiers 'ПИ 51500.x.y' seen in this project's own scraped data",
+        "coordinates": "https://nominatim.openstreetmap.org/search?q=Несебър%2C+Община+Несебър%2C+България&format=jsonv2",
+        "date": "2026-10-08"
+      }
+    },
+    {
+      "key": "obzor",
+      "name": "Обзор",
+      "kind": "град",
+      "ekatte": "53045",
+      "lat": 42.8205748,
+      "lon": 27.8794434,
+      "aliases": ["Обзор", "гр.Обзор", "гр. Обзор", "гр Обзор"],
+      "source": {
+        "ekatte": "https://bg.wikipedia.org/wiki/Обзор (infobox 'Селище в България', поле екатте) -- cross-checked against KAIS identifiers 'ПИ 53045.x.y' seen in this project's own scraped data",
+        "coordinates": "https://nominatim.openstreetmap.org/search?q=Обзор%2C+Община+Несебър%2C+България&format=jsonv2",
+        "date": "2026-10-08"
+      }
+    },
+    {
+      "key": "sveti-vlas",
+      "name": "Свети Влас",
+      "kind": "град",
+      "ekatte": "11538",
+      "lat": 42.7138408,
+      "lon": 27.7588044,
+      "aliases": ["Свети Влас", "Св. Влас", "Св.Влас", "гр.Свети Влас", "гр. Свети Влас", "гр.Св.Влас", "гр. Св. Влас", "к.к. Свети Влас", "к.к.Свети Влас"],
+      "source": {
+        "ekatte": "https://bg.wikipedia.org/wiki/Свети_Влас (infobox 'Селище в България', поле екатте) -- cross-checked against KAIS identifiers 'ПИ 11538.x.y' seen in this project's own scraped data",
+        "coordinates": "https://nominatim.openstreetmap.org/search?q=Свети+Влас%2C+Община+Несебър%2C+България&format=jsonv2",
+        "date": "2026-10-08"
+      }
+    },
+    {
+      "key": "ravda",
+      "name": "Равда",
+      "kind": "село",
+      "ekatte": "61056",
+      "lat": 42.6445091,
+      "lon": 27.6783594,
+      "aliases": ["Равда", "с.Равда", "с. Равда", "с Равда"],
+      "source": {
+        "ekatte": "https://bg.wikipedia.org/wiki/Равда (infobox 'Селище в България', поле екатте) -- cross-checked against KAIS identifiers 'ПИ 61056.x.y' seen in this project's own scraped data",
+        "coordinates": "https://nominatim.openstreetmap.org/search?q=Равда%2C+Община+Несебър%2C+България&format=jsonv2",
+        "date": "2026-10-08"
+      }
+    },
+    {
+      "key": "kosharitsa",
+      "name": "Кошарица",
+      "kind": "село",
+      "ekatte": "39164",
+      "lat": 42.7522809,
+      "lon": 27.6924871,
+      "aliases": ["Кошарица", "с.Кошарица", "с. Кошарица", "с Кошарица"],
+      "source": {
+        "ekatte": "https://bg.wikipedia.org/wiki/Кошарица (infobox 'Селище в България', поле екатте) -- cross-checked against KAIS identifiers 'ПИ 39164.x.y' seen in this project's own scraped data",
+        "coordinates": "https://nominatim.openstreetmap.org/search?q=Кошарица%2C+Община+Несебър%2C+България&format=jsonv2",
+        "date": "2026-10-08"
+      }
+    },
+    {
+      "key": "orizare",
+      "name": "Оризаре",
+      "kind": "село",
+      "ekatte": "53822",
+      "lat": 42.7501415,
+      "lon": 27.6201132,
+      "aliases": ["Оризаре", "с.Оризаре", "с. Оризаре", "с Оризаре"],
+      "source": {
+        "ekatte": "https://bg.wikipedia.org/wiki/Оризаре (infobox 'Селище в България', поле екатте) -- cross-checked against KAIS identifiers 'ПИ 53822.x.y' seen in this project's own scraped data",
+        "coordinates": "https://nominatim.openstreetmap.org/search?q=Оризаре%2C+Община+Несебър%2C+България&format=jsonv2",
+        "date": "2026-10-08"
+      }
+    },
+    {
+      "key": "tankovo",
+      "name": "Тънково",
+      "kind": "село",
+      "ekatte": "73571",
+      "lat": 42.6944549,
+      "lon": 27.6497810,
+      "aliases": ["Тънково", "с.Тънково", "с. Тънково", "с Тънково"],
+      "source": {
+        "ekatte": "https://bg.wikipedia.org/wiki/Тънково_(област_Бургас) (infobox 'Селище в България', поле екатте)",
+        "coordinates": "https://nominatim.openstreetmap.org/search?q=Тънково%2C+Община+Несебър%2C+България&format=jsonv2",
+        "date": "2026-10-08"
+      }
+    },
+    {
+      "key": "gyulyovtsa",
+      "name": "Гюльовца",
+      "kind": "село",
+      "ekatte": "18469",
+      "lat": 42.7668315,
+      "lon": 27.5994811,
+      "aliases": ["Гюльовца", "с.Гюльовца", "с. Гюльовца", "с Гюльовца"],
+      "source": {
+        "ekatte": "https://bg.wikipedia.org/wiki/Гюльовца (infobox 'Селище в България', поле екатте) -- cross-checked against KAIS identifiers 'ПИ 18469.x.y' seen in this project's own scraped data",
+        "coordinates": "https://nominatim.openstreetmap.org/search?q=Гюльовца%2C+Община+Несебър%2C+България&format=jsonv2",
+        "date": "2026-10-08"
+      }
+    },
+    {
+      "key": "banya",
+      "name": "Баня",
+      "kind": "село",
+      "ekatte": "02703",
+      "lat": 42.7748600,
+      "lon": 27.8171499,
+      "aliases": ["с.Баня", "с. Баня", "с Баня"],
+      "source": {
+        "ekatte": "https://bg.wikipedia.org/wiki/Баня_(област_Бургас) (infobox 'Селище в България', поле екатте)",
+        "coordinates": "https://nominatim.openstreetmap.org/search?q=Баня%2C+Община+Несебър%2C+България&format=jsonv2",
+        "date": "2026-10-08"
+      },
+      "note": "No bare 'Баня' alias on purpose -- 'баня' is also the common Bulgarian noun for 'bath/spa', so only the settlement-prefixed forms ('с.Баня'/'с. Баня') are matched; every real mention in this project's data already uses that prefix."
+    },
+    {
+      "key": "priselci",
+      "name": "Приселци",
+      "kind": "село",
+      "ekatte": "58431",
+      "lat": 42.8242091,
+      "lon": 27.7992070,
+      "aliases": ["Приселци", "с.Приселци", "с. Приселци", "с Приселци"],
+      "source": {
+        "ekatte": "https://bg.wikipedia.org/wiki/Приселци_(област_Бургас) (infobox 'Селище в България', поле екатте)",
+        "coordinates": "https://nominatim.openstreetmap.org/search?q=Приселци%2C+Община+Несебър%2C+България&format=jsonv2",
+        "date": "2026-10-08"
+      }
+    },
+    {
+      "key": "panicovo",
+      "name": "Паницово",
+      "kind": "село",
+      "ekatte": "55350",
+      "lat": 42.8511600,
+      "lon": 27.6625200,
+      "aliases": ["Паницово", "с.Паницово", "с. Паницово", "с Паницово"],
+      "source": {
+        "ekatte": "https://bg.wikipedia.org/wiki/Паницово (infobox 'Селище в България', поле екатте)",
+        "coordinates": "https://nominatim.openstreetmap.org/search?q=Паницово%2C+Община+Несебър%2C+България&format=jsonv2",
+        "date": "2026-10-08"
+      }
+    },
+    {
+      "key": "rakovskovo",
+      "name": "Раковсково",
+      "kind": "село",
+      "ekatte": "62102",
+      "lat": 42.8357199,
+      "lon": 27.7338500,
+      "aliases": ["Раковсково", "с.Раковсково", "с. Раковсково", "с Раковсково"],
+      "source": {
+        "ekatte": "https://bg.wikipedia.org/wiki/Раковсково (infobox 'Селище в България', поле екатте)",
+        "coordinates": "https://nominatim.openstreetmap.org/search?q=Раковсково%2C+Община+Несебър%2C+България&format=jsonv2",
+        "date": "2026-10-08"
+      }
+    },
+    {
+      "key": "emona",
+      "name": "Емона",
+      "kind": "село",
+      "ekatte": "27454",
+      "lat": 42.7155005,
+      "lon": 27.8847932,
+      "aliases": ["Емона", "с.Емона", "с. Емона", "с Емона"],
+      "source": {
+        "ekatte": "https://bg.wikipedia.org/wiki/Емона (infobox 'Селище в България', поле екатте)",
+        "coordinates": "https://nominatim.openstreetmap.org/search?q=Емона%2C+Община+Несебър%2C+България&format=jsonv2",
+        "date": "2026-10-08"
+      }
+    },
+    {
+      "key": "koznitsa",
+      "name": "Козница",
+      "kind": "село",
+      "ekatte": "37825",
+      "lat": 42.8766099,
+      "lon": 27.6785300,
+      "aliases": ["Козница", "с.Козница", "с. Козница", "с Козница"],
+      "source": {
+        "ekatte": "https://bg.wikipedia.org/wiki/Козница_(област_Бургас) (infobox 'Селище в България', поле екатте)",
+        "coordinates": "https://nominatim.openstreetmap.org/search?q=Козница%2C+Община+Несебър%2C+България&format=jsonv2",
+        "date": "2026-10-08"
+      }
+    },
+    {
+      "key": "slanchev-bryag",
+      "name": "Слънчев бряг",
+      "kind": "курорт",
+      "ekatte": null,
+      "ekatte_territory": "51500 (землище Несебър)",
+      "lat": 42.6892559,
+      "lon": 27.7060843,
+      "aliases": ["Слънчев бряг", "Сл.бряг", "Сл. бряг", "Сл бряг", "к.к. Слънчев бряг", "к.к.Слънчев бряг", "кк Слънчев бряг"],
+      "source": {
+        "ekatte": "no own EKATTE -- resort built-up area inside EKATTE 51500 (Несебър); cadastral identifiers in this project's data use the 51500 prefix for Слънчев бряг objects too",
+        "coordinates": "https://nominatim.openstreetmap.org/search?q=Слънчев+бряг%2C+Несебър%2C+България&format=jsonv2",
+        "date": "2026-10-08"
+      }
+    },
+    {
+      "key": "elenite",
+      "name": "Елените",
+      "kind": "курорт",
+      "ekatte": null,
+      "ekatte_territory": "11538 (землище Свети Влас)",
+      "lat": 42.7039690,
+      "lon": 27.8100651,
+      "aliases": ["Елените", "к.к. Елените", "к.к.Елените", "кк Елените"],
+      "source": {
+        "ekatte": "no own EKATTE -- resort built-up area inside EKATTE 11538 (Свети Влас)",
+        "coordinates": "https://nominatim.openstreetmap.org/search?q=Елените%2C+Свети+Влас%2C+България&format=jsonv2",
+        "date": "2026-10-08"
+      }
+    }
+  ]
+}

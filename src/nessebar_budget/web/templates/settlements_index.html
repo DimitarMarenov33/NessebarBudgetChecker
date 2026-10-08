@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block title %}Населени места — Бюджетен монитор Несебър{% endblock %}
+{% block content %}
+<div class="container">
+  {% call m.page_head("Карта", "Населени места", root ~ "map.html", "Карта") %}
+  Капиталови разходи, договори и сигнали, разпределени по населено място на Община Несебър — вижте
+  <a href="{{ root }}map.html">картата</a> или <a href="{{ root }}methodology.html#map">как е изчислено</a>.
+  {% endcall %}
+
+  <section class="block" data-table-container>
+    <div class="toolbar">
+      {{ m.search("Търси населено място…") }}
+      {{ m.count(settlements | length) }}
+    </div>
+    <div class="table-wrap">
+    <table class="table table--settlements-full" data-sortable data-filterable>
+      <thead>
+        <tr>
+          <th data-sort="none">Населено място</th>
+          {% for y in last_years %}
+          <th data-sort="none" class="num">{{ y }}</th>
+          {% endfor %}
+          <th data-sort="none" class="num">Общо (всички години)</th>
+          <th data-sort="none" class="num">Обекти</th>
+          <th data-sort="none" class="num">Договори</th>
+          <th data-sort="none" class="num">Сигнали</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for s in settlements | sort(attribute="all_years.spent", reverse=true) %}
+        <tr>
+          <td><a class="row-link" href="{{ root }}{{ s.href }}">{{ s.name }}</a><span class="sub">{{ s.kind }}{% if s.ekatte %} · ЕКАТТЕ {{ s.ekatte }}{% endif %}</span></td>
+          {% for y in last_years %}
+          <td class="num" data-sort-value="{{ s.years[y].spent if y in s.years else 0 }}">{{ m.cell_label(y | string) }}{% if y in s.years %}{{ s.years[y].spent | eur }}{% else %}<span class="muted">—</span>{% endif %}</td>
+          {% endfor %}
+          <td class="num" data-sort-value="{{ s.all_years.spent }}">{{ m.cell_label("Общо") }}{{ s.all_years.spent | eur }}</td>
+          <td class="num" data-sort-value="{{ s.all_years.objects_count }}">{{ m.cell_label("Обекти") }}{{ s.all_years.objects_count | num }}</td>
+          <td class="num" data-sort-value="{{ s.contracts.count }}">{{ m.cell_label("Договори") }}{{ s.contracts.count | num }}</td>
+          <td class="num" data-sort-value="{{ s.flags_count }}">{{ m.cell_label("Сигнали") }}{{ s.flags_count | num }}</td>
+        </tr>
+      {% endfor %}
+      <tr>
+        <td><span class="muted-strong">Без разпознато населено място</span><span class="sub">обекти без име на населено място в отчета</span></td>
+        {% for y in last_years %}
+        <td class="num" data-sort-value="{{ unassigned.years[y].spent if y in unassigned.years else 0 }}">{{ m.cell_label(y | string) }}{% if y in unassigned.years %}{{ unassigned.years[y].spent | eur }}{% else %}<span class="muted">—</span>{% endif %}</td>
+        {% endfor %}
+        <td class="num" data-sort-value="{{ unassigned.all_years.spent }}">{{ m.cell_label("Общо") }}{{ unassigned.all_years.spent | eur }}</td>
+        <td class="num" data-sort-value="{{ unassigned.all_years.objects_count }}">{{ m.cell_label("Обекти") }}{{ unassigned.all_years.objects_count | num }}</td>
+        <td class="num">{{ m.cell_label("Договори") }}<span class="muted">—</span></td>
+        <td class="num">{{ m.cell_label("Сигнали") }}<span class="muted">—</span></td>
+      </tr>
+      </tbody>
+    </table>
+    </div>
+    <p class="footnote">„Общо" включва всички години с отчет (2021–2026 по наличните месечни справки).
+    Сборът на всички редове по-горе, включително „Без разпознато населено място", съвпада със сборите
+    в <a href="{{ root }}budget/index.html">капиталовата програма</a> за всяка година.</p>
+  </section>
+</div>
+{% endblock %}

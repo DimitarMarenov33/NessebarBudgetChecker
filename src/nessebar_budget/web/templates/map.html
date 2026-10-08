@@ -1,0 +1,261 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block title %}Карта на разходите — Бюджетен монитор Несебър{% endblock %}
+{% block description %}Къде отиват капиталовите разходи на Община Несебър по населени места — карта по данни от месечните отчети.{% endblock %}
+{% block head %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+{% endblock %}
+{% block content %}
+<div class="container">
+  {% call m.page_head("Карта", "Карта на разходите") %}
+  Къде отиват капиталовите разходи на общината, по населено място — сумирано от месечните отчети на
+  nesebar.bg (вижте <a href="{{ root }}settlements/index.html">пълната таблица по населени места</a> и
+  <a href="{{ root }}methodology.html#map">как е изчислена картата</a>).
+  {% endcall %}
+
+  <div class="stats stats--4" role="list">
+    <div class="stat" role="listitem">
+      <span class="stat__label">Похарчено общо (всички години)</span>
+      <span class="stat__value">{{ m.figure(total_spent) }}</span>
+      <span class="stat__note">{{ total_objects | num }} капиталови обекта</span>
+    </div>
+    <div class="stat" role="listitem">
+      <span class="stat__label">Населени места с данни</span>
+      <span class="stat__value"><span class="figure">{{ settlements_with_data | num }}</span></span>
+      <span class="stat__note">от {{ settlements | length | num }} в общината</span>
+    </div>
+    <div class="stat" role="listitem">
+      <span class="stat__label">Без разпознато населено място</span>
+      <span class="stat__value">{{ m.figure(unassigned.all_years.spent) }}</span>
+      <span class="stat__note">{{ unassigned.all_years.objects_count | num }} обекта — виж „Как е изчислено"</span>
+    </div>
+    <div class="stat" role="listitem">
+      <span class="stat__label">Сигнали с разпознато населено място</span>
+      <span class="stat__value"><span class="figure">{{ flags_mapped | num }}</span></span>
+      <span class="stat__note">от {{ flags_total | num }} общо сигнала</span>
+    </div>
+  </div>
+
+  <section class="block">
+    <div class="map__toolbar">
+      <nav class="segmented map__years" aria-label="Избор на година" data-map-years>
+        <button type="button" data-map-year="all" aria-pressed="true">Всички години</button>
+        {% for y in years_available | reverse %}
+        <button type="button" data-map-year="{{ y }}" aria-pressed="false">{{ y }}</button>
+        {% endfor %}
+      </nav>
+      <label class="switch" for="cadastre-toggle">
+        <input type="checkbox" id="cadastre-toggle">
+        <span class="switch__track" aria-hidden="true"><span class="switch__thumb"></span></span>
+        <span class="switch__label">Кадастрална карта (АГКК)</span>
+      </label>
+    </div>
+
+    <div id="map" class="map__frame" data-root="{{ root }}" role="img" aria-label="Карта на капиталовите разходи на Община Несебър по населени места"></div>
+
+    <p class="map__note" id="cadastre-note" hidden>Приближете картата (мащаб 17 или по-голям), за да се покажат имотите от кадастралната карта.</p>
+    <p class="map__note">Кадастралният слой се зарежда на живо от АГКК (сървър на Агенцията по
+    геодезия, картография и кадастър) само за визуална справка — възможно е временно да не е
+    достъпен. Размерът на всеки кръг е пропорционален на корена квадратен от похарчените средства
+    (по-голям кръг = непропорционално повече пари, не линейно), за избраната година.</p>
+
+    <details class="sources map__legend">
+      <summary class="sources__summary">{{ m.chevron() }}<span>Легенда и бележки</span></summary>
+      <div class="sources__body">
+        <p>Всяка точка е населено място от Община Несебър. Размерът на кръга показва похарчени
+        капиталови средства (<code>spent_period</code> от месечния отчет) за избраната година или за
+        всички години общо — по корен квадратен мащаб, за да се виждат и по-малките населени места.</p>
+        <p>Числата идват само от обекти, чието име в месечния отчет назовава населеното място (вижте
+        <a href="{{ root }}methodology.html#map">методологията</a>) — обекти без разпознато населено
+        място се броят в „Без разпознато населено място" по-горе, а не в нулата на някое населено
+        място, за да съвпада сборът с общите суми в бюджета.</p>
+        <p>Кадастралният слой (превключвателят по-горе) е допълнителен, зареден на живо от публичния
+        сървър на АГКК — не е част от данните на този сайт и е само ориентировъчен визуален слой.</p>
+        <p class="muted">Точни координати на отделни обекти (а не само на населеното място) се
+        добавят доброволно — вижте <a href="https://github.com/DimitarMarenov33/NessebarBudgetChecker/tree/main/data/locations" rel="noopener">data/locations/README.md</a>.</p>
+      </div>
+    </details>
+  </section>
+
+  <section class="block" data-table-container>
+    <div class="block__head">
+      <h2 class="block__title">Населени места по похарчени средства (всички години)</h2>
+      <p class="block__sub">Пълната таблица, с данни по години, е на <a href="{{ root }}settlements/index.html">страницата за населени места</a>.</p>
+    </div>
+    <div class="table-wrap">
+    <table class="table table--settlements table--stack" data-sortable>
+      <thead>
+        <tr>
+          <th data-sort="none">Населено място</th>
+          <th data-sort="none" class="num">Похарчено</th>
+          <th data-sort="none" class="num">Обекти</th>
+          <th data-sort="none" class="num">Договори</th>
+          <th data-sort="none" class="num">Сигнали</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for s in settlements | sort(attribute="all_years.spent", reverse=true) %}
+        <tr>
+          <td><a class="row-link" href="{{ root }}{{ s.href }}">{{ s.name }}</a><span class="sub">{{ s.kind }}{% if s.ekatte %} · ЕКАТТЕ {{ s.ekatte }}{% endif %}</span></td>
+          <td class="num" data-sort-value="{{ s.all_years.spent }}">{{ m.cell_label("Похарчено") }}{{ s.all_years.spent | eur }}</td>
+          <td class="num" data-sort-value="{{ s.all_years.objects_count }}">{{ m.cell_label("Обекти") }}{{ s.all_years.objects_count | num }}</td>
+          <td class="num" data-sort-value="{{ s.contracts.count }}">{{ m.cell_label("Договори") }}{{ s.contracts.count | num }}</td>
+          <td class="num" data-sort-value="{{ s.flags_count }}">{{ m.cell_label("Сигнали") }}{{ s.flags_count | num }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </section>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+(function () {
+  "use strict";
+  var el = document.getElementById("map");
+  if (!el || typeof L === "undefined") return;
+  var root = el.getAttribute("data-root") || "";
+
+  var map = L.map("map", { scrollWheelZoom: false }).setView([42.72, 27.72], 11);
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>'
+  }).addTo(map);
+
+  var settlementLayer = L.layerGroup().addTo(map);
+  var pinsLayer = L.layerGroup().addTo(map);
+  var cadastreLayer = null;
+  var geo = null;
+  var currentYear = "all";
+
+  function fmtEur(v) {
+    return Math.round(v || 0).toLocaleString("en-US") + " €";
+  }
+
+  function valueFor(props, field) {
+    if (currentYear === "all") return props.all_years[field];
+    var y = props.years[currentYear];
+    return y ? y[field] : 0;
+  }
+
+  function render() {
+    settlementLayer.clearLayers();
+    if (!geo) return;
+    var maxSpent = 0;
+    geo.features.forEach(function (f) {
+      maxSpent = Math.max(maxSpent, valueFor(f.properties, "spent") || 0);
+    });
+    geo.features.forEach(function (f) {
+      var props = f.properties;
+      var spent = valueFor(props, "spent") || 0;
+      var plan = valueFor(props, "plan") || 0;
+      var objects = valueFor(props, "objects_count") || 0;
+      var radius = maxSpent > 0 ? 6 + 34 * Math.sqrt(spent / maxSpent) : 8;
+      var yearLabel = currentYear === "all" ? "всички години" : currentYear;
+      var marker = L.circleMarker(
+        [f.geometry.coordinates[1], f.geometry.coordinates[0]],
+        { radius: radius, color: "#5e6ad2", weight: 1, fillColor: "#5e6ad2", fillOpacity: 0.45 }
+      );
+      marker.bindPopup(
+        "<strong>" + props.name + "</strong> (" + yearLabel + ")<br>" +
+        "План: " + fmtEur(plan) + "<br>" +
+        "Похарчено: " + fmtEur(spent) + "<br>" +
+        "Обекти: " + objects + "<br>" +
+        "Договори: " + props.contracts_count + " (" + fmtEur(props.contracts_total_eur) + ")<br>" +
+        "Сигнали: " + props.flags_count + "<br>" +
+        "<a href=\"" + root + props.href + "\">Виж населеното място →</a>"
+      );
+      marker.addTo(settlementLayer);
+    });
+  }
+
+  fetch(root + "data/map.json")
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+      geo = data;
+      render();
+      (data.pins || []).forEach(function (p) {
+        if (typeof p.lat !== "number" || typeof p.lon !== "number") return;
+        L.marker([p.lat, p.lon]).bindPopup(
+          "<strong>" + p.object_name + "</strong>" + (p.period ? " (" + p.period + ")" : "") +
+          (p.source_note ? "<br>" + p.source_note : "")
+        ).addTo(pinsLayer);
+      });
+    })
+    .catch(function () { /* map stays usable (tiles + controls) without the data layer */ });
+
+  var yearButtons = Array.prototype.slice.call(document.querySelectorAll("[data-map-year]"));
+  yearButtons.forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      currentYear = btn.getAttribute("data-map-year");
+      yearButtons.forEach(function (b) { b.setAttribute("aria-pressed", String(b === btn)); });
+      render();
+    });
+  });
+
+  // Cadastre overlay: a plain Leaflet ImageOverlay refreshed from АГКК's
+  // ArcGIS "export" endpoint on every move. The server sends no CORS headers
+  // and its service-metadata endpoint is blocked by the browser (ORB), so an
+  // ArcGIS client library cannot initialise against it; a bare <img src>
+  // request for the rendered picture is the only thing that works, and the
+  // browser's own Referer header is what the server requires. Only loaded at
+  // zoom >= CADASTRE_MIN_ZOOM: at lower zooms parcels are not drawn anyway.
+  var CADASTRE_EXPORT = "https://arcgis.cadastre.bg/arcgisnopki/rest/services/InternalKais/CmcrPublic/MapServer/export";
+  var CADASTRE_LAYERS = "show:1,2,15,17"; // parcels, buildings, boundaries, labels
+  var CADASTRE_MIN_ZOOM = 17;
+  var cadastreNote = document.getElementById("cadastre-note");
+  var cadastreToggle = document.getElementById("cadastre-toggle");
+
+  function cadastreUrl() {
+    var b = map.getBounds();
+    var size = map.getSize();
+    var sw = L.CRS.EPSG3857.project(b.getSouthWest());
+    var ne = L.CRS.EPSG3857.project(b.getNorthEast());
+    return CADASTRE_EXPORT +
+      "?bbox=" + [sw.x, sw.y, ne.x, ne.y].join(",") +
+      "&bboxSR=3857&imageSR=3857" +
+      "&size=" + size.x + "," + size.y +
+      "&layers=" + encodeURIComponent(CADASTRE_LAYERS) +
+      "&format=png32&transparent=true&dpi=96&f=image";
+  }
+
+  function refreshCadastre() {
+    if (!cadastreLayer) { return; }
+    if (map.getZoom() < CADASTRE_MIN_ZOOM) {
+      cadastreLayer.setOpacity(0);
+      if (cadastreNote) { cadastreNote.hidden = false; }
+      return;
+    }
+    if (cadastreNote) { cadastreNote.hidden = true; }
+    cadastreLayer.setOpacity(0.8);
+    cadastreLayer.setBounds(map.getBounds());
+    cadastreLayer.setUrl(cadastreUrl());
+  }
+
+  if (cadastreToggle) {
+    cadastreToggle.addEventListener("change", function () {
+      if (cadastreToggle.checked) {
+        cadastreLayer = L.imageOverlay(cadastreUrl(), map.getBounds(), {
+          opacity: 0.8,
+          interactive: false,
+          attribution: "© АГКК (кадастрална карта, зарежда се на живо)"
+        }).addTo(map);
+        map.on("moveend zoomend", refreshCadastre);
+        refreshCadastre();
+        if (map.getZoom() < CADASTRE_MIN_ZOOM) {
+          // Jump to a parcel-level view so the toggle visibly does something.
+          map.setView(map.getCenter(), CADASTRE_MIN_ZOOM);
+        }
+      } else if (cadastreLayer) {
+        map.off("moveend zoomend", refreshCadastre);
+        map.removeLayer(cadastreLayer);
+        cadastreLayer = null;
+        if (cadastreNote) { cadastreNote.hidden = true; }
+      }
+    });
+  }
+})();
+</script>
+{% endblock %}

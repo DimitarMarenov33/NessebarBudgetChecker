@@ -520,6 +520,18 @@ def single_bidder_flags(
 # ---------------------------------------------------------------------------
 
 
+def contractor_key(record: dict[str, Any]) -> str:
+    """Grouping key for a contractor across contracts: the EIK when known,
+    else the contractor name, else ``"?"``. Shared by
+    `contractor_concentration_flags` and `rules.companies` so a flag's
+    `subject_id` always matches the key the site slugifies to build
+    `contractors/<key>.html` (see `web.build._contractor_group_key`, which
+    additionally falls back to a per-procurement key -- not needed here
+    since every caller already filters to rows that have an EIK or a name).
+    """
+    return str(record.get("contractor_eik") or record.get("contractor_name") or "?")
+
+
 def contractor_concentration_flags(
     contracts: list[dict[str, Any]], thresholds: Thresholds, *, now: dt.datetime | None = None
 ) -> list[dict[str, Any]]:
@@ -546,8 +558,7 @@ def contractor_concentration_flags(
 
     by_contractor: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for r in recent:
-        key = r.get("contractor_eik") or r.get("contractor_name") or "?"
-        by_contractor[key].append(r)
+        by_contractor[contractor_key(r)].append(r)
 
     out: list[dict[str, Any]] = []
     for key, rows in by_contractor.items():

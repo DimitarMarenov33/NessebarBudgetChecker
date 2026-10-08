@@ -80,6 +80,7 @@ or API key as it appears in the source, `value` the raw value as published,
 | `contractor_concentration`, `splitting`, `near_threshold` | One ЦАИС ЕОП source per member contract (or the procedure's estimate). |
 | `missing_monthly_report`, `missing_annual_report` | `https://www.nesebar.bg/reports.html`, the B1/B3 kinds checked, and the files of that period we *do* have. |
 | `eu_funded_irregularity` | Each underlying flag (`kind: "flag"`, permalink filled in by the engine after the upsert) plus where the EU funding is read from: SIGMA `eu_funded`, EOP `IsEUFinanced`, or the matched notice wording. |
+| `related_party`, `person_concentration`, `young_company`, `company_status`, `activity_mismatch` | A `registry` source: the contractor's Trade Register deed page (`Company.source_url`), with whichever fields the rule read (name/role/share for a matched person; status/registration date/last ГФО year/НКИД for a company-level rule). `related_party` also carries a `declaration` source: the official's declaration PDF (`Official.document_url`), with name/role/mandate and, for a declaration-based match, the matched raw interest line. Plus one ЦАИС ЕОП/SIGMA source per contract counted. |
 
 **Leva.** Pre-2026 budget files are published in leva; the parser stores EUR
 (2 dp) with `extra_json.original_currency = "BGN"`/`conversion_rate`, so a
@@ -507,6 +508,102 @@ under чл. 248а НК (**not** in `docs/law/`; cited per the project brief).
 Documents: the grant contract (договор за безвъзмездна финансова помощ),
 the managing authority's verification reports, project reports.
 
+## Companies & conflicts of interest (Търговски регистър ↔ декларации)
+
+Five dataset-level rules in `rules/companies.py`, cross-referencing
+contractors against the Trade Register snapshot (`db.models.Company`/
+`CompanyPerson`, scraped from the Registry Agency portal by ЕИК) and
+municipal officials' declarations of interest (`db.models.Official`,
+scraped from the municipality's declarations register). All five are tier
+`signal` and all five return `[]` gracefully when `companies`/`officials`
+is still empty (the two scrapers are a separate, concurrent workstream).
+
+**Съименници (namesakes).** `related_party`'s name-based match is a
+plain string comparison of normalized full names (lower-case, ≥ 3 tokens)
+-- it does **not** prove the Trade Register person and the official are the
+same human being. Two unrelated Bulgarians can share a common first+family
+name combination, and a third name (patronymic) reduces but does not
+eliminate that risk. Every name-based flag's explanation says this
+explicitly and points at the one way to actually verify it: opening the
+official's declaration of interests PDF (also attached as a `declaration`
+source on the flag, even when no specific interest line matched).
+
+### `related_party`
+
+A current manager/partner/sole owner/board member of a contractor shares a
+full name (≥ 3 tokens) with an `Official` (councillor/mayor/...), **or**
+an official's `declared_interests_json` names the contractor (same ЕИК, or
+the same normalized company name). Severity `high` when the match comes
+from the declaration itself (strong evidence) or the contractor's total
+contracted value is ≥ 100,000 €; otherwise `warning`. Legal basis: ЗОП чл.
+54, ал. 1, т. 7 and ал. 2 (the contracting authority must exclude a bidder
+with an unremovable conflict of interest, extended to the people
+representing it and its governing/supervisory bodies); for a councillor
+specifically, also ЗМСМА чл. 37, ал. 1 (*"Общинският съветник не може да
+участва при вземане на решения, когато се отнасят до негови имуществени
+интереси..."*). **Caveat:** see "Съименници" above -- a name-only
+match is a lead to verify, not a finding.
+
+### `person_concentration`
+
+One person (by normalized full name, current company roles only) stands
+behind 2+ distinct contractor companies that **together** won >= 3
+contracts or >= 200,000 € from the municipality. Same legal anchor as
+`contractor_concentration` (ЗОП чл. 2, ал. 1, т. 1-2) and the same
+rationale: splitting business across formally separate companies run by
+the same person defeats measuring concentration per legal entity.
+Subject `person:<name_normalized>` -- links to the contractors list (no
+dedicated "people" page yet). **Caveat:** also subject to the namesake risk
+above, since the grouping key is a normalized name, not a national ID.
+
+### `young_company`
+
+A contract signed within 12 months of the contractor's registration date
+(`Company.registered_at`), worth >= 50,000 €. Severity `high` when >=
+200,000 € or within 6 months, else `warning`. Not a violation by itself --
+a brand-new company can legitimately win a contract -- but a pattern worth
+asking the selection-criteria documents about. Legal anchor: ЗОП чл. 2, ал.
+1, т. 1-2 (равнопоставеност, свободна конкуренция).
+
+### `company_status`
+
+Either of two independent reasons, combined into one flag per contractor:
+(a) the contractor is in ликвидация/несъстоятелност/заличена in the Trade
+Register while holding a contract signed in the last 3 years (severity
+`high` for несъстоятелност/заличена, `warning` for ликвидация); or (b) for
+a contractor with >= 100,000 € of contracted value, `last_annual_report_year`
+is missing or more than 2 years older than the latest contract's year.
+Legal basis for (a): ЗОП чл. 2, ал. 1 (principles) and ЗОП чл. 55, ал. 1, т. 1
+(verified in `docs/law/zop.txt`: the contracting authority *may* exclude a
+bidder that is declared insolvent, in insolvency proceedings or in
+liquidation -- an optional ground, which is why this stays a signal; the data
+also does not capture *when* the proceeding started relative to the
+contract). For (b): **ЗСч чл. 38, ал. 1, т. 1** (verified in
+`docs/law/zsch.txt`): traders publish the ГФО in the Trade Register "в срок
+до 30 септември на следващата година". Two exemptions from ал. 9 are applied
+in code: sole traders (ЕТ) without a mandatory audit publish no ГФО at all
+(т. 1), so they are never flagged for it; and a company with no activity
+files a one-off no-activity declaration instead (т. 2, registry ident
+`1001BI`), which counts as a filing. The missing-report branch is the
+company's own breach, not the municipality's; the explanation says so.
+Verified on 2026-10-08 that the parsed report years match the portal's own
+"Announced acts" tab (ЕЛЕКТРИКАЛ ГРУП, 102981058: 2007-2022 on both).
+
+### `activity_mismatch`
+
+The contractor's declared НКИД division (first 2 digits of
+`Company.nkid_code`) is one of a small, explicit set of hand-picked
+incompatible pairs against the contract's CPV division (first 2 digits of
+`cpv_code`), for contracts >= 50,000 €. The only pairs ever flagged are in
+`thresholds.ACTIVITY_INCOMPATIBLE_PAIRS` (e.g. hospitality/real-estate
+НКИД 55/56/68 winning a CPV 45 строителство contract) -- a combination
+simply **absent** from that table is never, by itself, a reason to flag; a
+much larger positive compatibility table (`ACTIVITY_NKID_CPV_COMPATIBLE`,
+documentation only) lists the ordinary pairings this rule does not bother
+encoding as "incompatible" (e.g. a general trading company winning almost
+any supply contract). Tier `signal`, severity `warning`. Legal basis: ЗОП
+чл. 2, ал. 1, т. 3 (пропорционалност).
+
 ---
 
 ## Opacity
@@ -816,3 +913,16 @@ Current: 41 (2022-04 .. 2025-12, minus the four Decembers that carry
   missing from `budget_reports` while a background download of the
   municipality's archive is still running; re-run `analyze` afterwards and
   the corresponding `missing_*_report` flags resolve automatically.
+- **The five company rules (`related_party`, `person_concentration`,
+  `young_company`, `company_status`, `activity_mismatch`) depend on two
+  scrapers run as a separate workstream** (`companies`/`company_people`
+  from the Trade Register, `officials` from the declarations register).
+  Until those tables are populated, all five rules correctly return no
+  flags -- this is not evidence of a clean dataset, only that the
+  cross-reference has not been attempted yet.
+- **`related_party`/`person_concentration`'s name match is a string
+  comparison, not identity verification** -- see "Съименници" in the
+  Companies section above.
+- **`company_status`'s ЗСч text is the Registry Agency's consolidated copy**
+  (amendments up to ДВ бр. 104/2020, see `docs/law/zsch.txt`); later
+  amendments to чл. 38 have not been checked.

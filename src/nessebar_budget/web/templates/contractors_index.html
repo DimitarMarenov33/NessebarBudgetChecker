@@ -22,6 +22,7 @@
           <th data-sort="none" class="num">Обща стойност</th>
           <th data-sort="none" class="num col-share">Дял от общо</th>
           <th data-sort="none" class="num">Един участник</th>
+          <th data-sort="none" class="num col-tr" title="Статус в Търговския регистър">ТР</th>
         </tr>
       </thead>
       <tbody>
@@ -35,6 +36,9 @@
           </td>
           <td class="num" data-sort-value="{{ co.single_bidder_share if co.single_bidder_share is not none else -1 }}">
             {{ m.cell_label("Един участник") }}{% if co.single_bidder_share is not none %}{{ co.single_bidder_share | pct }}{% else %}<span class="muted">няма данни</span>{% endif %}
+          </td>
+          <td class="num col-tr">
+            {{ m.cell_label("ТР") }}<span class="dot dot--{{ co.tr_status_dot }}" role="img" aria-label="Търговски регистър: {{ co.tr_status_label }}" title="Търговски регистър: {{ co.tr_status_label }}"></span>
           </td>
         </tr>
       {% endfor %}

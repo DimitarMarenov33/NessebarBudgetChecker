@@ -11,8 +11,10 @@ rule shapes (see that module's docstring):
   imports and calls it directly.
 
 - `run_full_analysis` is the real engine for this project's anomaly rules:
-  it loads procurements and the capital budget ledger from the DB, runs
-  every rule in `analysis.rules`, and upserts the results into `Flag` keyed
+  it loads procurements, the capital budget ledger, and (for `rules.companies`)
+  the Trade Register snapshot (`Company`/`CompanyPerson`) and officials'
+  declarations (`Official`) from the DB, runs every rule in
+  `analysis.rules`, and upserts the results into `Flag` keyed
   on `(rule, subject_key)` -- new subjects are inserted, previously-seen
   subjects are updated in place (severity/message/details refreshed,
   `last_seen_at` bumped), and subjects a rule no longer produces are marked
@@ -45,10 +47,12 @@ from nessebar_budget.analysis.provenance import KIND_FLAG, budget_report_ref, fi
 from nessebar_budget.analysis.rules import (
     MissingValueRule,
     Rule,
+    activity_mismatch_flags,
     annex_growth_flags,
     annex_over_cap_flags,
     bid_at_ceiling_flags,
     build_index,
+    company_status_flags,
     contractor_concentration_flags,
     eu_funded_irregularity_flags,
     exceptional_procedure_flags,
@@ -58,17 +62,28 @@ from nessebar_budget.analysis.rules import (
     missing_value_flags,
     near_threshold_flags,
     overspend_vs_plan_flags,
+    person_concentration_flags,
     plan_jump_flags,
     price_unverifiable_flags,
+    related_party_flags,
     short_offer_deadline_flags,
     single_bidder_flags,
     splitting_flags,
     unmatched_spending_flags,
     unplanned_spending_flags,
+    young_company_flags,
 )
 from nessebar_budget.analysis.thresholds import Thresholds, get_thresholds
 from nessebar_budget.db.budget_models import BudgetLineItem
-from nessebar_budget.db.models import BudgetReport, Flag, Procurement
+from nessebar_budget.db.models import (
+    BudgetReport,
+    Company,
+    CompanyPerson,
+    Flag,
+    Official,
+    Procurement,
+)
+from nessebar_budget.scrapers.registry import no_activity_declaration_year
 
 #: Rules considered stable enough to run by default in the *legacy* minimal
 #: pipeline. PricePerUnitRule is deliberately excluded until reference price
@@ -127,6 +142,47 @@ def _procurement_to_dict(p: Procurement) -> dict[str, Any]:
 
 def _row_type(extra_json: dict[str, Any] | None) -> str | None:
     return (extra_json or {}).get("row_type")
+
+
+def _company_person_to_dict(p: CompanyPerson) -> dict[str, Any]:
+    return {
+        "name": p.name,
+        "name_normalized": p.name_normalized,
+        "role": p.role,
+        "share_text": p.share_text,
+        "person_eik": p.person_eik,
+        "is_current": p.is_current,
+        "field_ident": p.field_ident,
+    }
+
+
+def _company_to_dict(c: Company, people: list[dict[str, Any]]) -> dict[str, Any]:
+    return {
+        "id": c.id,
+        "eik": c.eik,
+        "name": c.name,
+        "status": c.status,
+        "nkid_code": c.nkid_code,
+        "nkid_label": c.nkid_label,
+        "registered_at": c.registered_at,
+        "last_annual_report_year": c.last_annual_report_year,
+        "last_no_activity_declaration_year": no_activity_declaration_year(c.raw_json),
+        "legal_form": c.legal_form,
+        "source_url": c.source_url,
+        "people": people,
+    }
+
+
+def _official_to_dict(o: Official) -> dict[str, Any]:
+    return {
+        "name": o.name,
+        "name_normalized": o.name_normalized,
+        "role": o.role,
+        "mandate": o.mandate,
+        "source_url": o.source_url,
+        "document_url": o.document_url,
+        "declared_interests_json": o.declared_interests_json or [],
+    }
 
 
 def _budget_row_to_dict(
@@ -203,6 +259,11 @@ FULL_RULE_NAMES = (
     "unmatched_spending",
     "missing_monthly_report",
     "missing_annual_report",
+    "related_party",
+    "person_concentration",
+    "young_company",
+    "company_status",
+    "activity_mismatch",
     "eu_funded_irregularity",
 )
 
@@ -227,7 +288,11 @@ def _collect_flags(
     now: dt.datetime,
     reports: list[tuple[str | None, str | None]] | None = None,
     report_files: dict[str, list[str]] | None = None,
+    companies: list[dict[str, Any]] | None = None,
+    officials: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
+    companies = companies or []
+    officials = officials or []
     eop_contracts = [c for c in contracts if c["source"] == "eop"]
     index = build_index(contracts)
 
@@ -297,6 +362,14 @@ def _collect_flags(
     # "not scraped yet", not "the municipality published nothing".
     if reports:
         flags += missing_report_flags(reports, thresholds, now=now, files_by_period=report_files)
+    # --- companies: Trade Register / declarations of interest ---
+    # All gracefully [] when `companies`/`officials` is empty (see
+    # `rules.companies`' module docstring).
+    flags += related_party_flags(eop_contracts, companies, officials, thresholds)
+    flags += person_concentration_flags(eop_contracts, companies, thresholds)
+    flags += young_company_flags(eop_contracts, companies, thresholds)
+    flags += company_status_flags(eop_contracts, companies, thresholds, now=now)
+    flags += activity_mismatch_flags(eop_contracts, companies, thresholds)
     # --- meta rules: always last ---
     flags += eu_funded_irregularity_flags(flags, index)
     return flags
@@ -434,8 +507,26 @@ def run_full_analysis(
         if r.period and name:
             report_files[r.period].append(name)
 
+    person_rows = session.scalars(select(CompanyPerson)).all()
+    people_by_company_id: dict[int, list[dict[str, Any]]] = defaultdict(list)
+    for p in person_rows:
+        people_by_company_id[p.company_id].append(_company_person_to_dict(p))
+    company_rows = session.scalars(select(Company)).all()
+    companies = [
+        _company_to_dict(c, people_by_company_id.get(c.id, [])) for c in company_rows
+    ]
+    official_rows = session.scalars(select(Official)).all()
+    officials = [_official_to_dict(o) for o in official_rows]
+
     flags = _collect_flags(
-        contracts, objects, thresholds, now, reports=reports, report_files=dict(report_files)
+        contracts,
+        objects,
+        thresholds,
+        now,
+        reports=reports,
+        report_files=dict(report_files),
+        companies=companies,
+        officials=officials,
     )
     counts = _upsert_flags(session, flags, FULL_RULE_NAMES, now)
 

@@ -1487,6 +1487,27 @@ a.issue:hover .issue__chev { color: var(--text); }
   .table--minfin td:nth-child(2) { grid-area: ness; text-align: left; }
   .table--minfin td:nth-child(3) { grid-area: med; }
   .table--minfin td:nth-child(4) { grid-area: n; text-align: left; font-size: 12px; }
+
+  .table--settlements tr { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-areas: "name name" "spent objects" "contracts flags"; }
+  .table--settlements td:nth-child(1) { grid-area: name; }
+  .table--settlements td:nth-child(2) { grid-area: spent; text-align: left; }
+  .table--settlements td:nth-child(3) { grid-area: objects; }
+  .table--settlements td:nth-child(4) { grid-area: contracts; text-align: left; }
+  .table--settlements td:nth-child(5) { grid-area: flags; }
+
+  .table--settlement-years tr { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-areas: "year year" "plan spent" "objects change"; }
+  .table--settlement-years td:nth-child(1) { grid-area: year; }
+  .table--settlement-years td:nth-child(2) { grid-area: plan; text-align: left; }
+  .table--settlement-years td:nth-child(3) { grid-area: spent; }
+  .table--settlement-years td:nth-child(4) { grid-area: objects; text-align: left; }
+  .table--settlement-years td:nth-child(5) { grid-area: change; }
+
+  .table--settlement-objects tr { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-areas: "obj obj" "period period" "plan spent" "cad cad"; }
+  .table--settlement-objects td:nth-child(1) { grid-area: obj; }
+  .table--settlement-objects td:nth-child(2) { grid-area: period; font-size: 12px; }
+  .table--settlement-objects td:nth-child(3) { grid-area: plan; text-align: left; }
+  .table--settlement-objects td:nth-child(4) { grid-area: spent; }
+  .table--settlement-objects td:nth-child(5) { grid-area: cad; text-align: left; }
 }
 
 @media (min-width: 1000px) {
@@ -1644,4 +1665,136 @@ a.issue:hover .issue__chev { color: var(--text); }
 @media (max-width: 640px) {
   .wordmark__muted { display: none; }
   .beta-pill { margin-left: 6px; }
+}
+
+/* ------------------------------------------------------------------ map page */
+.map__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3) var(--s-4);
+  margin-bottom: var(--s-4);
+}
+.map__years { flex: 1 1 auto; max-width: 100%; }
+
+.map__frame {
+  height: 60vh;
+  min-height: 360px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--surface-2);
+}
+@media (min-width: 1000px) {
+  .map__frame { height: 640px; }
+}
+
+.map__note {
+  margin-top: var(--s-3);
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--text-2);
+}
+.map__legend { margin-top: var(--s-4); }
+.map__legend .sources__body p { margin: 0; }
+.map__legend .sources__body p + p { margin-top: var(--s-2); }
+
+/* Leaflet controls/popups re-themed to match the site's dark/light tokens
+   instead of Leaflet's hardcoded white chrome. */
+.leaflet-container {
+  background: var(--surface-2);
+  font: inherit;
+  color: var(--text);
+}
+.leaflet-control-zoom a {
+  background: var(--surface-1) !important;
+  border-color: var(--border-2) !important;
+  color: var(--text) !important;
+}
+.leaflet-control-zoom a:hover { background: var(--surface-hover) !important; }
+.leaflet-control-attribution {
+  background: rgba(15, 16, 17, 0.72) !important;
+  color: var(--text-2) !important;
+}
+.leaflet-control-attribution a { color: var(--text-body) !important; }
+.leaflet-popup-content-wrapper {
+  background: var(--surface-1);
+  color: var(--text-body);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+.leaflet-popup-content { font-size: 13px; line-height: 1.5; margin: 10px 12px; }
+.leaflet-popup-content a { color: var(--accent-text); }
+.leaflet-popup-tip { background: var(--surface-1); }
+.leaflet-popup-close-button { color: var(--text-2) !important; }
+
+/* ------------------------------------------------------------------ toggle switch */
+.switch {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  cursor: pointer;
+  user-select: none;
+  font-size: 13px;
+  color: var(--text-body);
+}
+.switch input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+}
+.switch__track {
+  flex: none;
+  position: relative;
+  width: 36px;
+  height: 20px;
+  border-radius: 999px;
+  background: var(--track);
+  border: 1px solid var(--border-2);
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+.switch__thumb {
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--text-2);
+  transition: transform 0.15s ease, background-color 0.15s ease;
+}
+.switch input:checked + .switch__track { background: var(--accent); border-color: var(--accent); }
+.switch input:checked + .switch__track .switch__thumb { transform: translateX(16px); background: #fff; }
+.switch input:focus-visible + .switch__track { box-shadow: 0 0 0 3px var(--focus-ring); }
+
+@media (max-width: 719px) {
+  .map__toolbar { flex-direction: column; align-items: stretch; }
+  .switch { min-height: 44px; }
+}
+
+/* ------------------------------------------------------------------ Trade Register card (companies) */
+:root { --status-active: #3fb950; }
+@media (prefers-color-scheme: light) {
+  :root { --status-active: #2f9e44; }
+}
+.dot--active { background: var(--status-active); }
+.col-tr { width: 1%; text-align: center; }
+/* `.is-over` was table-cell-only (`.table td.is-over`); the stale-ГФО note
+   on the registry card needs the same warning colour outside a table. */
+.is-over { color: var(--sev-warning); }
+.company-card + .company-card { margin-top: var(--s-7); }
+.inline-more { display: inline; }
+.inline-more summary { display: inline; cursor: pointer; color: var(--accent-text); font-size: 13px; }
+.inline-more p { margin-top: var(--s-2); color: var(--text-body); }
+
+@media (max-width: 719px) {
+  .table--contractors td:nth-child(6) { display: none; }
+
+  .table--company-people tr { grid-template-areas: "name name" "role share" "eik eik"; }
+  .table--company-people td:nth-child(1) { grid-area: name; }
+  .table--company-people td:nth-child(2) { grid-area: role; }
+  .table--company-people td:nth-child(3) { grid-area: share; }
+  .table--company-people td:nth-child(4) { grid-area: eik; font-size: 12px; }
 }

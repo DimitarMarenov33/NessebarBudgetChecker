@@ -9,7 +9,7 @@ from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from nessebar_budget.config import get_settings
-from nessebar_budget.db.migrate import migrate_flags_table
+from nessebar_budget.db.migrate import migrate_flags_table, migrate_officials_table
 from nessebar_budget.db.models import Base
 
 _engine: Engine | None = None
@@ -49,7 +49,9 @@ def get_session() -> Iterator[Session]:
 
 def init_db() -> None:
     """Create all tables that don't exist yet, then patch up any that
-    pre-date later model changes (see `db.migrate.migrate_flags_table`)."""
+    pre-date later model changes (see `db.migrate.migrate_flags_table` /
+    `migrate_officials_table`)."""
     engine = get_engine()
     Base.metadata.create_all(engine)
     migrate_flags_table(engine)
+    migrate_officials_table(engine)

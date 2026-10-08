@@ -125,6 +125,10 @@ def test_required_pages_exist(built_site: Path) -> None:
         "data/cash_execution.csv",
         "data/flags.json",
         "data/meta.json",
+        "map.html",
+        "settlements/index.html",
+        "data/map.json",
+        "data/settlements.csv",
         "static/style.css",
         "static/app.js",
     ]:
@@ -385,6 +389,96 @@ def test_detail_and_period_pages_exist(built_site: Path) -> None:
     assert len(list((built_site / "contractors").glob("*.html"))) > 1
     periods = [p for p in (built_site / "budget").glob("*.html") if p.name != "index.html"]
     assert periods, "no budget/<period>.html pages"
+
+
+@requires_db
+def test_contractor_page_shows_trade_register_card(built_site: Path) -> None:
+    """The contractor page for ЕИК 102981058 (ЕЛЕКТРИКАЛ ГРУП, managed by
+    Йордан Пламенов Момчев per the real `companies`/`company_people` data)
+    must carry a "Търговски регистър" card with the company's name and its
+    current manager."""
+    page = built_site / "contractors" / "102981058.html"
+    assert page.exists(), "missing contractors/102981058.html"
+    html = page.read_text(encoding="utf-8")
+    assert "Търговски регистър" in html
+    assert "ЕЛЕКТРИКАЛ ГРУП" in html
+    assert "ЙОРДАН ПЛАМЕНОВ МОМЧЕВ" in html
+
+
+def _companies_table_count() -> int:
+    from nessebar_budget.db.models import Company
+
+    engine = create_engine(f"sqlite:///{DEFAULT_DB_PATH}")
+    with Session(engine) as session:
+        return session.scalar(select(func.count()).select_from(Company))
+
+
+@requires_db
+def test_companies_csv_row_count_matches_companies_table(built_site: Path) -> None:
+    csv_path = built_site / "data" / "companies.csv"
+    with csv_path.open(encoding="utf-8") as f:
+        rows = list(csv.DictReader(f))
+
+    expected = _companies_table_count()
+    assert expected > 0
+    assert len(rows) == expected
+
+
+@requires_db
+def test_settlement_detail_pages_exist_for_every_settlement(built_site: Path) -> None:
+    from nessebar_budget.web.geo import SETTLEMENTS
+
+    for s in SETTLEMENTS:
+        page = built_site / "settlements" / f"{s['key']}.html"
+        assert page.exists(), f"missing settlements/{s['key']}.html"
+
+
+@requires_db
+def test_map_json_is_valid_geojson_and_reconciles_with_budget_totals(built_site: Path) -> None:
+    """data/map.json is a FeatureCollection of Point features, one per
+    settlement, and -- for a year with a clean December snapshot -- the sum
+    of every settlement's `spent` for that year plus `unassigned`'s `spent`
+    for that year equals the budget page's own grand-total spent for that
+    year's period (built from the very same object rows, just partitioned
+    by settlement instead of by function -- see geo.build_map_data)."""
+    from nessebar_budget.web.build import _load_budget
+
+    data = json.loads((built_site / "data" / "map.json").read_text(encoding="utf-8"))
+    assert data["type"] == "FeatureCollection"
+    assert len(data["features"]) == 16  # 14 settlements + 2 resort areas
+
+    for feature in data["features"]:
+        assert feature["type"] == "Feature"
+        assert feature["geometry"]["type"] == "Point"
+        lon, lat = feature["geometry"]["coordinates"]
+        assert isinstance(lon, (int, float)) and isinstance(lat, (int, float))
+        props = feature["properties"]
+        assert {"key", "name", "kind", "href", "all_years", "years", "contracts_count", "flags_count"} <= props.keys()
+
+    engine = create_engine(f"sqlite:///{DEFAULT_DB_PATH}")
+    with Session(engine) as session:
+        budget = _load_budget(session)
+
+    # Pick a year whose representative period is an exact "<year>-12" report
+    # (no fallback-month note), so the comparison is against a clean,
+    # unambiguous full-year snapshot.
+    candidate_years = [y for y in range(2021, 2027) if f"{y}-12" in budget["periods"]]
+    assert candidate_years, "no year with a December budget report to check against"
+    checked_year = candidate_years[-1]
+    period = f"{checked_year}-12"
+
+    grand_spent = budget["by_period"][period]["grand_total"]["spent_period"]
+
+    settlements_spent = sum(
+        f["properties"]["years"].get(str(checked_year), {}).get("spent", 0.0)
+        for f in data["features"]
+    )
+    unassigned_spent = data["unassigned"]["years"].get(str(checked_year), {}).get("spent", 0.0)
+
+    assert abs((settlements_spent + unassigned_spent) - grand_spent) < 1.0, (
+        f"{period}: settlements ({settlements_spent}) + unassigned ({unassigned_spent}) "
+        f"!= budget grand total ({grand_spent})"
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -1,6 +1,6 @@
 """Unit tests for `nessebar_budget.pipeline.run_weekly`.
 
-All eight steps are monkeypatched to fakes -- no network access, no real
+All ten steps are monkeypatched to fakes -- no network access, no real
 database -- so these tests only exercise `run_weekly`'s own orchestration:
 step ordering, failure isolation (a failing step doesn't stop later steps),
 the returned summary dict on success, and the non-zero exit on failure.
@@ -23,6 +23,8 @@ ALL_STEP_NAMES = [
     "init_db",
     "scrape_eop",
     "scrape_sigma",
+    "scrape_registry",
+    "scrape_declarations",
     "scrape_nesebar_site",
     "parse_budget",
     "analyze",

@@ -34,8 +34,11 @@ from sqlalchemy import create_engine, select
 from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.orm import Session
 
+from nessebar_budget.analysis.rules._common import _local_date
 from nessebar_budget.db.budget_models import BudgetLineItem, CashExecutionLine
-from nessebar_budget.db.models import Flag, Procurement
+from nessebar_budget.db.models import Company, CompanyPerson, Flag, Procurement
+from nessebar_budget.scrapers.registry import normalize_eiks
+from nessebar_budget.web import geo
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 WEB_DIR = Path(__file__).resolve().parent
@@ -211,6 +214,10 @@ def site_path(href: str | None) -> str:
 
 
 def fmt_date(value: Any) -> str:
+    """dd.mm.yyyy in Sofia time. Datetimes in this project are naive UTC
+    (ЦАИС ЕОП stores a contract signed on 20.10 as 19.10 21:00 UTC), so they
+    are converted to the Sofia calendar date first; plain `date` values are
+    already calendar dates and are printed as they are."""
     if value is None:
         return "—"
     if isinstance(value, str):
@@ -218,6 +225,8 @@ def fmt_date(value: Any) -> str:
             value = dt.datetime.fromisoformat(value)
         except ValueError:
             return value
+    if isinstance(value, dt.datetime):
+        value = _local_date(value)
     return value.strftime("%d.%m.%Y")
 
 
@@ -409,9 +418,9 @@ def _build_contracts(
         match = match_by_eop_id.get(e.id)
         year = None
         if e.contract_date is not None:
-            year = e.contract_date.year
+            year = _local_date(e.contract_date).year
         elif e.published_at is not None:
-            year = e.published_at.year
+            year = _local_date(e.published_at).year
 
         contractor_key = (
             _contractor_group_key(e.contractor_eik, e.contractor_name, e.id)
@@ -466,6 +475,14 @@ class ContractorView:
     single_bidder_known: int
     single_bidder_count: int
     contracts: list[ContractView]
+    #: Trade Register card(s) for this contractor's member company/companies
+    #: (one per EIK found in `eik_display`; several for a consortium), plus a
+    #: single aggregated status dot for the contractors index. See
+    #: `_attach_company_views()`.
+    tr_cards: list[CompanyCardView] = field(default_factory=list)
+    tr_status_key: str = "none"
+    tr_status_dot: str = "neutral"
+    tr_status_label: str = "Няма данни"
 
     @property
     def single_bidder_share(self) -> float | None:
@@ -509,6 +526,340 @@ def _build_contractors(contracts: list[ContractView]) -> list[ContractorView]:
         )
     contractors.sort(key=lambda c: c.total_value_eur, reverse=True)
     return contractors
+
+
+# --------------------------------------------------------------------------
+# Trade Register (Търговски регистър) — "companies"/"company_people" view
+# --------------------------------------------------------------------------
+
+#: `CompanyPerson.role` -> capitalized Bulgarian label for the registry card.
+COMPANY_ROLE_LABELS: dict[str, str] = {
+    "manager": "Управител",
+    "partner": "Съдружник",
+    "sole_owner": "Едноличен собственик",
+    "board_member": "Член на съвета",
+    "representative": "Представител",
+    "liquidator": "Ликвидатор",
+    "other": "Друго",
+}
+
+#: `Company.status` -> Bulgarian label. A missing/unrecognised status (incl.
+#: the schema's own `unknown`) falls back to "Няма данни" -- the registry
+#: simply hasn't resolved a definite state for this company.
+COMPANY_STATUS_LABELS: dict[str, str] = {
+    "active": "Активна",
+    "liquidation": "В ликвидация",
+    "insolvency": "В несъстоятелност",
+    "deregistered": "Заличена",
+}
+#: `Company.status` -> dot tone (reuses the site's existing dot colours --
+#: see `.dot--*` in style.css -- plus the one new `--status-active` green
+#: added for this card).
+_COMPANY_STATUS_DOT: dict[str, str] = {
+    "active": "active",
+    "liquidation": "warning",
+    "insolvency": "high",
+    "deregistered": "high",
+}
+#: Severity rank used to pick ONE status dot for a consortium contractor
+#: (several member companies) on the contractors index -- the worst member
+#: status wins, since that's the one worth a reader's attention.
+_TR_STATUS_RANK: dict[str, int] = {"active": 1, "liquidation": 2, "insolvency": 3, "deregistered": 3}
+#: Roles that make someone "stand behind" a company for the "също в"
+#: cross-link (a former/"not current" or merely procedural role --
+#: representative/liquidator/other -- does not count); mirrors
+#: `analysis.rules.companies._CURRENT_ROLES`.
+_TR_CROSS_LINK_ROLES = {"manager", "partner", "sole_owner", "board_member"}
+#: A ГФО more than this many years old is flagged stale (current year - 2).
+_TR_STALE_REPORT_YEARS = 2
+_TR_SOLE_TRADER_FORM = "Едноличен търговец"
+TR_STALE_REPORT_NOTE = (
+    "Търговците обявяват ГФО до 30 септември на следващата година (чл. 38, ал. 1, т. 1 ЗСч)."
+)
+TR_NAMESAKE_NOTE = (
+    "Съвпадението „също в“ е по пълно име (три или повече думи) — възможно е да става дума за "
+    "различни хора с еднакво име (съименици)."
+)
+
+
+def _company_status_label(status: str | None) -> str:
+    return COMPANY_STATUS_LABELS.get(status or "", "Няма данни")
+
+
+def _company_status_dot(status: str | None) -> str:
+    return _COMPANY_STATUS_DOT.get(status or "", "neutral")
+
+
+@dataclass
+class CompanyPersonView:
+    name: str
+    role_label: str
+    share_text: str | None
+    person_eik: str | None
+    #: (contractor_slug, contractor_name) pairs for every OTHER contractor
+    #: company where this same full name currently holds a qualifying role
+    #: (see `_TR_CROSS_LINK_ROLES`) -- "също в" links. Deterministic exact
+    #: match on `name_normalized`, 3+ word names only (see `docs/SITE.md`).
+    also_at: list[tuple[str, str]] = field(default_factory=list)
+
+
+@dataclass
+class CompanyCardView:
+    eik: str
+    name: str | None
+    legal_form: str | None
+    status_key: str
+    status_label: str
+    status_dot: str
+    seat_address: str | None
+    nkid_code: str | None
+    nkid_label: str | None
+    #: Free-text `activity`, truncated to ~200 chars (only set -- together
+    #: with `activity_full` -- when there's no nkid_code/nkid_label to show
+    #: instead).
+    activity_short: str | None
+    activity_full: str | None
+    capital_eur: float | None
+    #: "Вписана в ТР" normally; for an EIK not starting with "2" (a
+    #: pre-2008 company re-registered into the unified registry, not newly
+    #: founded) this is instead "В ТР от (пререгистрация от съдебния
+    #: регистър)", since `registered_at` for those is the 2008-2011
+    #: transfer date, not a founding date.
+    registered_label: str
+    registered_at: dt.date | None
+    last_annual_report_year: int | None
+    #: True when `last_annual_report_year` is more than `_TR_STALE_REPORT_YEARS`
+    #: behind the current year (sole traders are exempt -- see law_ref).
+    report_stale: bool
+    source_url: str | None
+    fetched_at: dt.datetime | None
+    people: list[CompanyPersonView]
+    has_cross_links: bool
+
+
+def _company_activity(company: Company) -> tuple[str | None, str | None]:
+    """(activity_short, activity_full) -- only used when the company has no
+    НКИД code/label; `activity_full` is set (non-None) only when the text
+    was actually truncated, so the template's "още" toggle only shows up
+    when there's more to reveal."""
+    text = (company.activity or "").strip()
+    if not text:
+        return None, None
+    if len(text) <= 200:
+        return text, None
+    return text[:200].rstrip() + "…", text
+
+
+_SHARE_AMOUNT_RE = re.compile(r"(\d+(?:[.,]\d+)?)\s*(лв\.?|€)")
+
+
+def _fmt_share(text: str | None) -> str | None:
+    """Registry share text ("50250.00 лв.") with this site's number style
+    ("50,250 лв."); the currency is kept as the registry states it. The CSV
+    export keeps the raw registry text."""
+    if not text:
+        return text
+
+    def _one(m: re.Match[str]) -> str:
+        amount = float(m.group(1).replace(",", "."))
+        decimals = 0 if amount == int(amount) else 2
+        unit = "лв." if m.group(2).startswith("лв") else "€"
+        return f"{amount:,.{decimals}f} {unit}"
+
+    return _SHARE_AMOUNT_RE.sub(_one, text)
+
+
+def _build_company_card(
+    company: Company,
+    people: list[CompanyPerson],
+    name_index: dict[str, list[tuple[int, set[str]]]],
+    contractor_name_by_slug: dict[str, str],
+    current_slug: str,
+    current_year: int,
+) -> CompanyCardView:
+    activity_short, activity_full = (
+        (None, None) if company.nkid_code else _company_activity(company)
+    )
+    report_stale = (
+        company.last_annual_report_year is not None
+        and company.last_annual_report_year < (current_year - _TR_STALE_REPORT_YEARS)
+        and company.legal_form != _TR_SOLE_TRADER_FORM
+    )
+
+    people_views: list[CompanyPersonView] = []
+    has_cross_links = False
+    for p in people:
+        if not p.is_current:
+            continue
+        also_at: list[tuple[str, str]] = []
+        if len((p.name_normalized or "").split()) >= 3:
+            slugs: set[str] = set()
+            for comp_id, co_slugs in name_index.get(p.name_normalized, []):
+                if comp_id != company.id:
+                    slugs |= co_slugs
+            slugs.discard(current_slug)
+            also_at = sorted(
+                ((s, contractor_name_by_slug.get(s, s)) for s in slugs),
+                key=lambda t: t[1],
+            )
+        has_cross_links = has_cross_links or bool(also_at)
+        people_views.append(
+            CompanyPersonView(
+                name=p.name,
+                role_label=COMPANY_ROLE_LABELS.get(p.role, p.role),
+                share_text=_fmt_share(p.share_text),
+                person_eik=p.person_eik,
+                also_at=also_at,
+            )
+        )
+
+    return CompanyCardView(
+        eik=company.eik,
+        name=company.name,
+        legal_form=company.legal_form,
+        status_key=company.status or "unknown",
+        status_label=_company_status_label(company.status),
+        status_dot=_company_status_dot(company.status),
+        seat_address=company.seat_address,
+        nkid_code=company.nkid_code,
+        nkid_label=company.nkid_label,
+        activity_short=activity_short,
+        activity_full=activity_full,
+        capital_eur=_as_float(company.capital_eur),
+        registered_label=(
+            "Вписана в ТР"
+            if (company.eik or "").startswith("2")
+            else "В ТР от (пререгистрация от съдебния регистър)"
+        ),
+        registered_at=company.registered_at.date() if company.registered_at else None,
+        last_annual_report_year=company.last_annual_report_year,
+        report_stale=report_stale,
+        source_url=company.source_url,
+        fetched_at=company.fetched_at,
+        people=people_views,
+        has_cross_links=has_cross_links,
+    )
+
+
+def _contractor_tr_status(cards: list[CompanyCardView]) -> tuple[str, str, str]:
+    """One (status_key, dot, label) for the contractors index -- the worst
+    member company's status wins (see `_TR_STATUS_RANK`); "none"/grey when
+    no member company was found in the Trade Register at all."""
+    if not cards:
+        return "none", "neutral", "Няма данни"
+    best = max(cards, key=lambda c: _TR_STATUS_RANK.get(c.status_key, 0))
+    if _TR_STATUS_RANK.get(best.status_key, 0) == 0:
+        return "none", "neutral", "Няма данни"
+    return best.status_key, best.status_dot, best.status_label
+
+
+def _attach_company_views(
+    contractors: list[ContractorView],
+    companies: list[Company],
+    people: list[CompanyPerson],
+    current_year: int,
+) -> None:
+    """Populate every `ContractorView.tr_cards`/`tr_status_*` in place.
+
+    A contractor's member company/companies are found by normalising
+    `eik_display` (handles both a plain EIK and a consortium's "eik1; eik2")
+    and looking each one up in `Company.eik` (already the registry's own
+    canonical 9/13-digit, zero-padded form -- see `scrapers.registry`). A
+    contractor with no eik_published, a placeholder EIK, or an EIK the
+    registry never returned a deed for (e.g. a ДЗЗД/BULSTAT-only entity, or
+    a fetch that failed -- see `docs/sources/REGISTRY_API.md`) simply gets
+    no card and the "no data" grey dot.
+    """
+    companies_by_eik = {c.eik: c for c in companies}
+    people_by_company: dict[int, list[CompanyPerson]] = defaultdict(list)
+    for p in people:
+        people_by_company[p.company_id].append(p)
+
+    contractor_name_by_slug = {co.slug: co.name for co in contractors}
+
+    # company_id -> every contractor slug it is linked to (a company can
+    # appear under more than one slug: solo, and/or as a consortium member
+    # grouped under a different raw "eik1; eik2" key).
+    company_slugs: dict[int, set[str]] = defaultdict(set)
+    matched_by_slug: dict[str, list[Company]] = {}
+    for co in contractors:
+        matched = [
+            companies_by_eik[eik] for eik in normalize_eiks(co.eik_display) if eik in companies_by_eik
+        ]
+        if matched:
+            matched_by_slug[co.slug] = matched
+            for comp in matched:
+                company_slugs[comp.id].add(co.slug)
+
+    # name_normalized -> [(company_id, {contractor slugs}), ...] for every
+    # CURRENT person in a qualifying role at a company that IS some
+    # contractor on this site (otherwise there's nowhere to link "също в" to).
+    name_index: dict[str, list[tuple[int, set[str]]]] = defaultdict(list)
+    for comp_id, slugs in company_slugs.items():
+        for p in people_by_company.get(comp_id, []):
+            if not p.is_current or p.role not in _TR_CROSS_LINK_ROLES:
+                continue
+            if len((p.name_normalized or "").split()) < 3:
+                continue
+            name_index[p.name_normalized].append((comp_id, slugs))
+
+    for co in contractors:
+        cards = [
+            _build_company_card(
+                comp, people_by_company.get(comp.id, []), name_index,
+                contractor_name_by_slug, co.slug, current_year,
+            )
+            for comp in matched_by_slug.get(co.slug, [])
+        ]
+        co.tr_cards = cards
+        co.tr_status_key, co.tr_status_dot, co.tr_status_label = _contractor_tr_status(cards)
+
+
+def _export_companies(companies: list[Company], data_dir: Path) -> None:
+    fieldnames = [
+        "eik", "name", "legal_form", "status", "seat_address", "nkid_code", "nkid_label",
+        "capital_eur", "registered_at", "last_annual_report_year", "source_url", "fetched_at",
+    ]
+    with (data_dir / "companies.csv").open("w", encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        for c in companies:
+            writer.writerow(
+                {
+                    "eik": c.eik,
+                    "name": c.name,
+                    "legal_form": c.legal_form,
+                    "status": c.status,
+                    "seat_address": c.seat_address,
+                    "nkid_code": c.nkid_code,
+                    "nkid_label": c.nkid_label,
+                    "capital_eur": _as_float(c.capital_eur),
+                    "registered_at": iso(c.registered_at),
+                    "last_annual_report_year": c.last_annual_report_year,
+                    "source_url": c.source_url,
+                    "fetched_at": iso(c.fetched_at),
+                }
+            )
+
+
+def _export_company_people(
+    people: list[CompanyPerson], companies_by_id: dict[int, Company], data_dir: Path
+) -> None:
+    fieldnames = ["eik", "name", "role", "share_text", "person_eik"]
+    with (data_dir / "company_people.csv").open("w", encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        for p in people:
+            comp = companies_by_id.get(p.company_id)
+            writer.writerow(
+                {
+                    "eik": comp.eik if comp else "",
+                    "name": p.name,
+                    "role": p.role,
+                    "share_text": p.share_text,
+                    "person_eik": p.person_eik,
+                }
+            )
 
 
 # --------------------------------------------------------------------------
@@ -831,6 +1182,30 @@ def _load_flags_safe(session: Session) -> list[Any]:
 #: never shown to a reader. Any key not listed here still renders (with a
 #: humanised fallback label), so a new rule's details never silently vanish.
 _DETAIL_LABELS: dict[str, str] = {
+    # -- Trade Register / declarations rules (rules.companies) --
+    "contractor_eik": "ЕИК на изпълнителя",
+    "contractor_name": "Изпълнител",
+    "status": "Статус в Търговския регистър",
+    "last_annual_report_year": "Последен обявен ГФО за година",
+    "last_no_activity_declaration_year": "Декларация за липса на дейност за година",
+    "latest_contract_year": "Година на последния договор",
+    "contract_count": "Брой договори",
+    "total_contract_count": "Брой договори общо",
+    "total_eur": "Обща стойност на договорите",
+    "status_reason": "Фирмата е в ликвидация, несъстоятелност или заличена",
+    "stale_report_reason": "Липсват скорошни годишни отчети",
+    "registered_at": "Вписана в Търговския регистър",
+    "age_days": "Възраст на фирмата при подписването",
+    "name": "Лице",
+    "official_name": "Длъжностно лице",
+    "official_role": "Длъжност",
+    "official_mandate": "Мандат",
+    "person_role": "Роля във фирмата",
+    "match_basis": "Основание за съвпадението",
+    "nkid_code": "Код по НКИД",
+    "nkid_label": "Основна дейност по НКИД",
+    "cpv_code": "Код по CPV",
+    "mismatch": "Несъответствие",
     "contract_date": "Дата на договора",
     "ted_publish_date": "Дата на публикуване",
     "deadline_days": "Срок по закон",
@@ -907,6 +1282,7 @@ _DETAIL_EUR_KEYS = {
 #: keys/nested record lists) not meaningful read as a bare value -- skipped
 #: so the numbers list never repeats itself or leaks a raw identifier.
 _DETAIL_SKIP_KEYS = {
+    "name_normalized", "companies",  # matching key / nested list, shown in the message
     "object_name", "source", "source_id", "subject", "quantity_found_in",
     "sigma_twin", "twin", "member_ids", "path", "group_key", "members",
     "procedure_type",  # procedure_label is this same field, already human-readable
@@ -977,7 +1353,17 @@ def _format_detail_value(key: str, value: Any) -> str | None:
         return fmt_date(value)
     if key.endswith("_days") or key == "window_days":
         return f"{fmt_num(value)} дни"
-    if key == "year":
+    if key == "status":
+        return COMPANY_STATUS_LABELS.get(str(value), str(value))
+    if key == "match_basis":
+        return {"name": "еднакви три имена", "declaration": "декларация за интереси"}.get(
+            str(value), str(value)
+        )
+    if key == "person_role":
+        return COMPANY_ROLE_LABELS.get(str(value), str(value))
+    if key == "registered_at":
+        return fmt_date(dt.date.fromisoformat(str(value)[:10]))
+    if key == "year" or key.endswith("_year"):
         try:
             return str(int(value))
         except (TypeError, ValueError):
@@ -1049,6 +1435,8 @@ _SOURCE_KIND_LABELS = {
     "sigma": "SIGMA",
     "reports_page": "Сайт на общината",
     "flag": "Сигнал на този сайт",
+    "registry": "Търговски регистър",
+    "declaration": "Регистър на декларациите",
 }
 _TYPE_OF_CONTRACT_CODE_LABELS = {1: "услуги", 2: "доставки", 3: "строителство"}
 _ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -1272,6 +1660,11 @@ RULE_LABELS = {
     "missing_annual_report": "Липсващ годишен отчет",
     "eu_funded_irregularity": "Европейски средства със сигнал",
     "price_unverifiable": "Цена, която не може да се провери",
+    "related_party": "Свързано лице",
+    "person_concentration": "Едно лице зад няколко изпълнители",
+    "young_company": "Новоучредена фирма",
+    "company_status": "Статус на фирмата",
+    "activity_mismatch": "Несъответствие на дейността",
 }
 
 #: The methodology page's "Правила за сигнали" section, as data rather than
@@ -1518,6 +1911,88 @@ METHODOLOGY_RULES: list[dict[str, Any]] = [
             "документите, посочени в другите сигнали за договора",
         ],
     },
+    # -- Companies: Trade Register <-> declarations of interest ------------
+    {
+        "rule": "related_party",
+        "tier": "signal",
+        "detects": "Текущ управител, съдружник, едноличен собственик или член на съвета на изпълнител "
+        "носи същото (три имена) с общински съветник/кмет, или е посочен в декларацията за интереси "
+        "на такова лице.",
+        "threshold": "Съвпадение по пълно име (≥ 3 думи) или по декларирана връзка (ЕИК или "
+        "наименование). Висока тежест при декларирана връзка или договори за ≥ 100,000 €, иначе "
+        "средна.",
+        "law_ref": "чл. 54, ал. 1, т. 7 и ал. 2 ЗОП (конфликт на интереси, който не може да бъде "
+        "отстранен); чл. 37, ал. 1 ЗМСМА (общинският съветник не участва в решения по свои "
+        "имуществени интереси).",
+        "documents": [
+            "актуална справка от Търговския регистър за фирмата",
+            "декларацията за интереси на съответното лице от Регистъра на декларациите",
+            "протоколи от заседания/решения, свързани с договорите на тази фирма",
+        ],
+    },
+    {
+        "rule": "person_concentration",
+        "tier": "signal",
+        "detects": "Едно и също лице (управител/съдружник/собственик/член на съвета) стои зад 2 или "
+        "повече различни фирми-изпълнители на общината.",
+        "threshold": "Фирмите заедно имат ≥ 3 договора или ≥ 200,000 € обща стойност с общината.",
+        "law_ref": "чл. 2, ал. 1, т. 1 и 2 ЗОП (равнопоставеност и свободна конкуренция).",
+        "documents": [
+            "актуални справки от Търговския регистър за всяка от фирмите",
+            "списък на всички договори на общината с тези фирми",
+            "протоколите от съответните процедури по избор на изпълнител",
+        ],
+    },
+    {
+        "rule": "young_company",
+        "tier": "signal",
+        "detects": "Фирма е спечелила договор с общината малко след учредяването си в Търговския "
+        "регистър.",
+        "threshold": "Договор на стойност ≥ 50,000 € в рамките на 12 месеца след регистрацията; висока "
+        "тежест при ≥ 200,000 € или в рамките на 6 месеца.",
+        "law_ref": "чл. 2, ал. 1, т. 1 и 2 ЗОП (равнопоставеност и свободна конкуренция).",
+        "documents": [
+            "удостоверение за актуално състояние от Търговския регистър",
+            "документация на поръчката с критериите за подбор (опит, капацитет)",
+            "декларация за икономическо и финансово състояние на участника",
+        ],
+    },
+    {
+        "rule": "company_status",
+        "tier": "signal",
+        "detects": "Изпълнител е в ликвидация/несъстоятелност/заличен, докато държи скорошен договор с "
+        "общината, или не е обявил годишен финансов отчет (ГФО) от години, а е получил значителни "
+        "плащания.",
+        "threshold": "Договор, подписан през последните 3 години, при статус ликвидация/"
+        "несъстоятелност/заличена фирма; или ГФО, по-стар от (последна година на договор - 2), при "
+        "договори за ≥ 100,000 €.",
+        "law_ref": "чл. 2, ал. 1 ЗОП (принципи); чл. 55, ал. 1, т. 1 ЗОП (възложителят може да отстрани "
+        "участник в несъстоятелност или ликвидация); чл. 38, ал. 1, т. 1 Закон за счетоводството "
+        "(търговците обявяват ГФО в търговския регистър до 30 септември на следващата година; "
+        "едноличните търговци без задължителен одит са освободени, а фирма без дейност подава "
+        "декларация — чл. 38, ал. 9).",
+        "documents": [
+            "удостоверение за актуално състояние от Търговския регистър",
+            "влязло в сила решение на съда за несъстоятелност/ликвидация (ако е приложимо)",
+            "обявените годишни финансови отчети (ГФО) на фирмата в Търговския регистър",
+            "приемо-предавателни протоколи по договора/договорите",
+        ],
+    },
+    {
+        "rule": "activity_mismatch",
+        "tier": "signal",
+        "detects": "Декларираната в Търговския регистър основна дейност (НКИД) на изпълнителя изглежда "
+        "несъвместима с предмета на поръчката (CPV) — напр. хотелиерска фирма печели поръчка за "
+        "строителство.",
+        "threshold": "Договор ≥ 50,000 €, при изрично заложена като несъвместима двойка НКИД/CPV (не "
+        "всяка комбинация, която просто липсва от таблицата, се сигнализира).",
+        "law_ref": "чл. 2, ал. 1, т. 3 ЗОП (пропорционалност).",
+        "documents": [
+            "актуална справка от Търговския регистър за предмета на дейност на фирмата",
+            "документация на поръчката с критериите за подбор (опит, технически възможности)",
+            "декларация за подизпълнители (ако е приложимо)",
+        ],
+    },
     # -- Opacity: lawful as far as the data shows, but unverifiable --------
     {
         "rule": "price_unverifiable",
@@ -1689,6 +2164,11 @@ def _flag_view(
     if subject_href is None and subject_type == "contractor" and subject_id:
         subject_href = f"../contractors/{subject_id}.html"
         subject_label = subject_id
+    if subject_href is None and subject_type == "person":
+        # No dedicated "people" page yet -- link to the contractors list,
+        # where the companies named in this flag's details can be found.
+        subject_href = "../contractors/index.html"
+        subject_label = (details or {}).get("name") if isinstance(details, dict) else None
     if subject_href is None and subject_type == "budget_object" and isinstance(details, dict):
         period = details.get("period") or details.get("to_period") or details.get("first_period")
         if period:
@@ -1813,6 +2293,9 @@ def _make_env() -> Environment:
     env.globals["repo_url"] = REPO_URL
     env.globals["rule_labels"] = RULE_LABELS
     env.globals["sources_bgn_note"] = SOURCES_BGN_NOTE
+    env.globals["tr_stale_report_note"] = TR_STALE_REPORT_NOTE
+    env.globals["tr_namesake_note"] = TR_NAMESAKE_NOTE
+    env.globals["kais_url"] = geo.kais_url
     return env
 
 
@@ -1839,7 +2322,7 @@ def _export_contracts(contracts: list[ContractView], data_dir: Path) -> None:
                 "contractor_name": c.contractor_name,
                 "contractor_eik": c.contractor_eik,
                 "procedure_type": c.procedure_type,
-                "contract_date": iso(c.contract_date),
+                "contract_date": iso(_local_date(c.contract_date)),
                 "published_at": iso(c.published_at),
                 "year": c.year,
                 "contract_value_eur": c.contract_value_eur,
@@ -1956,6 +2439,7 @@ def build_site(out_dir: Path, db_url: str | None = None) -> None:
 
     engine = create_engine(db_url)
     env = _make_env()
+    current_year = dt.datetime.now(dt.UTC).year
 
     if out_dir.exists():
         shutil.rmtree(out_dir)
@@ -1970,6 +2454,9 @@ def build_site(out_dir: Path, db_url: str | None = None) -> None:
             session, all_flags_raw
         )
         contractors = _build_contractors(contracts)
+        all_companies = list(session.scalars(select(Company)))
+        all_company_people = list(session.scalars(select(CompanyPerson)))
+        _attach_company_views(contractors, all_companies, all_company_people, current_year)
         budget = _load_budget(session)
         budget_changes = _compute_period_changes(budget["periods"], budget["by_period"])
         cash = _load_cash(session)
@@ -2019,6 +2506,17 @@ def build_site(out_dir: Path, db_url: str | None = None) -> None:
         _export_budget(session, data_dir)
         _export_cash(session, data_dir)
         _export_flags(flags, data_dir)
+        _export_companies(all_companies, data_dir)
+        _export_company_people(all_company_people, {c.id: c for c in all_companies}, data_dir)
+
+        # -- map: settlement aggregation (budget ledger + contracts + flags) --
+        geo.ensure_pins_scaffold()
+        map_data = geo.build_map_data(session, contracts, flags=flags, budget=budget)
+        geo.export_settlements_csv(map_data, data_dir / "settlements.csv")
+        (data_dir / "map.json").write_text(
+            json.dumps(geo.export_map_geojson(map_data), ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
 
     generated_at = dt.datetime.now(dt.UTC).replace(microsecond=0)
     generated_at_label = generated_at.strftime("%d.%m.%Y %H:%M") + " UTC"
@@ -2084,6 +2582,7 @@ def build_site(out_dir: Path, db_url: str | None = None) -> None:
             "contracts_signed": len(signed),
             "contracts_open": len(open_procs),
             "contractors": len(contractors),
+            "companies": len(all_companies),
             "flags": len(flags),
             "budget_periods": budget["periods"],
             "cash_periods": cash["periods"],
@@ -2228,6 +2727,51 @@ def build_site(out_dir: Path, db_url: str | None = None) -> None:
             "methodology_rules": METHODOLOGY_RULES,
         },
     )
+
+    # -- map / settlements ------------------------------------------------
+    settlements_with_data = sum(
+        1 for s in map_data["settlements"] if s["all_years"]["objects_count"] > 0
+    )
+    total_spent = (
+        sum(s["all_years"]["spent"] for s in map_data["settlements"])
+        + map_data["unassigned"]["all_years"]["spent"]
+    )
+    total_objects = (
+        sum(s["all_years"]["objects_count"] for s in map_data["settlements"])
+        + map_data["unassigned"]["all_years"]["objects_count"]
+    )
+    flags_mapped = sum(s["flags_count"] for s in map_data["settlements"])
+    last_years = sorted(map_data["years_available"])[-3:]
+
+    _write(
+        env, "map.html", out_dir / "map.html",
+        {
+            **base_ctx, "root": "", "active": "map",
+            "settlements": map_data["settlements"],
+            "unassigned": map_data["unassigned"],
+            "years_available": map_data["years_available"],
+            "notes": map_data["notes"],
+            "settlements_with_data": settlements_with_data,
+            "total_spent": total_spent,
+            "total_objects": total_objects,
+            "flags_mapped": flags_mapped,
+            "flags_total": len(flags),
+        },
+    )
+    _write(
+        env, "settlements_index.html", out_dir / "settlements" / "index.html",
+        {
+            **base_ctx, "root": "../", "active": "map",
+            "settlements": map_data["settlements"],
+            "unassigned": map_data["unassigned"],
+            "last_years": last_years,
+        },
+    )
+    for s in map_data["settlements"]:
+        _write(
+            env, "settlement_detail.html", out_dir / "settlements" / f"{s['key']}.html",
+            {**base_ctx, "root": "../", "active": "map", "s": s, "notes": map_data["notes"]},
+        )
 
 
 def main() -> None:

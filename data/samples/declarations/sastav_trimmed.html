@@ -1,0 +1,63 @@
+<!--
+Trimmed excerpt of the real composition page fetched 2026-10-08:
+https://os-nessebar.eu/sastav ("Състав", the current 2023-2027 council
+roster). Kept: 4 of the real 20 <li> entries (image srcset/alt attributes
+dropped -- irrelevant noise for name extraction), chosen to cover:
+  - a plain "First Patronymic Last" full name (Александър Стоянов Стоянов),
+  - the one hyphenated-surname entry, printed with spaces around the dash
+    (Венета Танева Танева - Кючукова -- note the name also repeats "Танева"
+    as both patronymic and the first half of the surname),
+  - two different people sharing a surname across roles reversed (Георги
+    Димитров Георгиев vs Георги Манолов Манолов), which is the real case
+    that makes `resolve_full_name` require the *first* name to match too,
+    not just the trailing (surname) token(s).
+Everything else on the real page (nav/header/footer, the other 16 people,
+"Образование"/"Професия" paragraphs) is omitted; it carries no additional
+parsing case for `_candidate_full_names`.
+-->
+<!doctype html>
+<html lang="bg">
+<body>
+<header><nav><a href="/">Общински Съвет Несебър</a></nav></header>
+<main>
+<div class="prose min-w-full">
+<h1 class="text-center uppercase">Състав</h1>
+<ul role="list" class="mx-auto grid max-w-2xl grid-cols-1 gap-x-6 gap-y-20 sm:grid-cols-2">
+<li class="flex flex-col gap-6 xl:flex-row">
+<img alt="Александър Стоянов Стоянов" class="aspect-[9/12] w-52" src="/storage/195/conversions/a.webp"/>
+<div class="flex-auto">
+<h3 class="text-lg font-semibold">Александър Стоянов Стоянов</h3>
+<p>Образование: Висше</p>
+<p>Професия: Управител на фирма</p>
+</div>
+</li>
+<li class="flex flex-col gap-6 xl:flex-row">
+<img alt="Венета Танева Танева - Кючукова" class="aspect-[9/12] w-52" src="/storage/4/conversions/b.webp"/>
+<div class="flex-auto">
+<h3 class="text-lg font-semibold">Венета Танева Танева - Кючукова</h3>
+<p>Образование: Висше</p>
+<p>Професия: Учител</p>
+</div>
+</li>
+<li class="flex flex-col gap-6 xl:flex-row">
+<img alt="Георги Димитров Георгиев" class="aspect-[9/12] w-52" src="/storage/6/conversions/c.webp"/>
+<div class="flex-auto">
+<h3 class="text-lg font-semibold">Георги Димитров Георгиев</h3>
+<p>Образование: Средно</p>
+<p>Професия: Земеделски производител</p>
+</div>
+</li>
+<li class="flex flex-col gap-6 xl:flex-row">
+<img alt="Георги Манолов Манолов" class="aspect-[9/12] w-52" src="/storage/7/conversions/d.webp"/>
+<div class="flex-auto">
+<h3 class="text-lg font-semibold">Георги Манолов Манолов</h3>
+<p>Образование: Висше</p>
+<p>Професия: Инженер</p>
+</div>
+</li>
+</ul>
+</div>
+</main>
+<footer><a href="/kontakti">Контакти</a></footer>
+</body>
+</html>

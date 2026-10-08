@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block title %}{{ s.name }} — Бюджетен монитор Несебър{% endblock %}
+{% block description %}Капиталови разходи, договори и сигнали в {{ s.name }}, Община Несебър.{% endblock %}
+{% block content %}
+<div class="container">
+  {% call m.page_head(s.kind | capitalize, s.name, root ~ "settlements/index.html", "Населени места") %}
+  {{ s.kind | capitalize }}{% if s.ekatte %} · ЕКАТТЕ {{ s.ekatte }}{% elif s.ekatte_territory %} · в землището на ЕКАТТЕ {{ s.ekatte_territory }}{% endif %}
+  · <a href="{{ root }}map.html">виж на картата</a>
+  {% endcall %}
+
+  <div class="stats stats--4" role="list">
+    <div class="stat" role="listitem">
+      <span class="stat__label">Похарчено (всички години)</span>
+      <span class="stat__value">{{ m.figure(s.all_years.spent) }}</span>
+      <span class="stat__note">план {{ s.all_years.plan | eur }}</span>
+    </div>
+    <div class="stat" role="listitem">
+      <span class="stat__label">Капиталови обекти</span>
+      <span class="stat__value"><span class="figure">{{ s.all_years.objects_count | num }}</span></span>
+      <span class="stat__note">по годишни отчети, виж таблицата по-долу</span>
+    </div>
+    <div class="stat" role="listitem">
+      <span class="stat__label">Договори, назоваващи {{ s.name }}</span>
+      <span class="stat__value"><span class="figure">{{ s.contracts.count | num }}</span></span>
+      <span class="stat__note">{{ s.contracts.total_eur | eur }} обща стойност</span>
+    </div>
+    <div class="stat" role="listitem">
+      <span class="stat__label">Сигнали</span>
+      <span class="stat__value"><span class="figure">{{ s.flags_count | num }}</span></span>
+      <span class="stat__note">автоматично откроени несъответствия</span>
+    </div>
+  </div>
+
+  <section class="block">
+    <div class="block__head">
+      <h2 class="block__title">По години</h2>
+      <p class="block__sub">План и похарчено за {{ s.name }} — всяка година от последния наличен месечен отчет (декември, когато е наличен).</p>
+    </div>
+    <div class="table-wrap">
+    <table class="table table--settlement-years table--stack">
+      <thead>
+        <tr><th>Година</th><th class="num">План</th><th class="num">Похарчено</th><th class="num">Обекти</th><th class="num">Промяна спрямо предходната година</th></tr>
+      </thead>
+      <tbody>
+      {% set prev = none %}
+      {% for y in s.years | sort %}
+        {% set bucket = s.years[y] %}
+        <tr{% if y in notes %} title="{{ notes[y] }}"{% endif %}>
+          <td class="muted-strong">{{ y }}{% if y in notes %}<span class="code-chip" title="{{ notes[y] }}">частичен отчет</span>{% endif %}</td>
+          <td class="num">{{ m.cell_label("План") }}{{ bucket.plan | eur }}</td>
+          <td class="num">{{ m.cell_label("Похарчено") }}{{ bucket.spent | eur }}</td>
+          <td class="num">{{ m.cell_label("Обекти") }}{{ bucket.objects_count | num }}</td>
+          <td class="num">{{ m.cell_label("Промяна") }}
+          {% if prev is not none %}
+            {% set delta = bucket.spent - prev %}
+            <span{% if delta > 0 %} class="is-over"{% endif %}>{{ "+" if delta >= 0 else "" }}{{ delta | eur }}</span>
+          {% else %}<span class="muted">—</span>{% endif %}
+          </td>
+        </tr>
+        {% set prev = bucket.spent %}
+      {% else %}
+        <tr><td colspan="5" class="empty">Няма данни за капиталови обекти в {{ s.name }} в наличните отчети.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </section>
+
+  {% if s.objects %}
+  <section class="block" data-table-container>
+    <div class="block__head">
+      <h2 class="block__title">Обекти</h2>
+      <p class="block__sub">{{ s.objects | length | num }} реда — един обект може да се повтаря в няколко години, ако е многогодишен.</p>
+    </div>
+    <div class="toolbar">
+      {{ m.search("Търси обект…") }}
+      {{ m.count(s.objects | length) }}
+    </div>
+    <div class="table-wrap">
+    <table class="table table--settlement-objects table--stack" data-sortable data-filterable>
+      <thead>
+        <tr>
+          <th data-sort="none">Обект</th>
+          <th data-sort="none">Период</th>
+          <th data-sort="none" class="num">План</th>
+          <th data-sort="none" class="num">Похарчено</th>
+          <th data-sort="none">Кадастрален идентификатор</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for o in s.objects | sort(attribute="period", reverse=true) %}
+        <tr{% if o.ambiguous %} title="Текстът назовава повече от едно населено място; показан е при първото."{% endif %}>
+          <td><span class="clamp-2">{{ o.name }}</span>{% if o.ambiguous %}<span class="sub">споменава и друго населено място</span>{% endif %}</td>
+          <td class="nowrap muted" data-sort-value="{{ o.period }}">{{ m.cell_label("Период") }}{{ o.period | period }}</td>
+          <td class="num" data-sort-value="{{ o.plan }}">{{ m.cell_label("План") }}{{ o.plan | eur }}</td>
+          <td class="num" data-sort-value="{{ o.spent }}">{{ m.cell_label("Похарчено") }}{{ o.spent | eur }}</td>
+          <td>{% if o.cadastral_ids %}{% for cid in o.cadastral_ids %}<a class="code-chip" href="{{ kais_url(cid) }}" rel="noopener" target="_blank" title="Отвори КАИС и потърсете {{ cid }}">{{ cid }}</a>{% if not loop.last %} {% endif %}{% endfor %}{% else %}<span class="muted">—</span>{% endif %}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    <p class="footnote">Линк към кадастрален идентификатор отваря КАИС (<a href="https://kais.cadastre.bg/bg/Map" rel="noopener" target="_blank">kais.cadastre.bg</a>) — системата няма проверен дълбок линк към конкретен имот, затова копирайте идентификатора в нейната търсачка.</p>
+  </section>
+  {% endif %}
+
+  {% if s.contracts.list %}
+  <section class="block">
+    <div class="block__head">
+      <h2 class="block__title">Договори</h2>
+      <p class="block__sub">Поръчки, в чието заглавие е назовано {{ s.name }}.</p>
+    </div>
+    <ul class="rows">
+      {% for c in s.contracts.list %}
+      <li><a class="rows__main" href="{{ root }}contracts/{{ c.source_id }}.html"><span class="clamp-2">{{ c.title or "(без заглавие)" }}</span><span class="sub">{{ c.contract_date | bgdate if c.contract_date else c.published_at | bgdate }}{% if c.contractor_name %} · {{ c.contractor_name }}{% endif %}</span></a><span class="rows__num">{{ c.display_value_eur | eur }}</span></li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
+  {% if s.flags %}
+  <section class="block">
+    <div class="block__head">
+      <h2 class="block__title">Сигнали</h2>
+      <p class="block__sub">Автоматично откроени несъответствия за обекти/договори в {{ s.name }}.</p>
+    </div>
+    <ul class="issues">
+      {% for f in s.flags %}
+      {{ m.flag_row(f, root) }}
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
+  <section class="block">
+    <div class="block__head">
+      <h2 class="block__title">Как е изчислено</h2>
+    </div>
+    <div class="card">
+      <p>Данните за {{ s.name }} идват от капиталовата програма (месечните отчети на nesebar.bg,
+      консолидирано звено „Общо") — само редове тип „обект" (не подкатегории/междинни суми), чието
+      <code>object_name</code> назовава {{ s.name }} чрез едно от неговите изписвания
+      ({% for a in s.aliases %}<code>{{ a }}</code>{% if not loop.last %}, {% endif %}{% endfor %})
+      или чрез кадастрален идентификатор{% if s.ekatte %} с префикс <code>{{ s.ekatte }}</code>{% endif %}.
+      За годишните суми се използва декемврийският отчет на годината (последният наличен месец, когато
+      декември липсва — вижте бележките по-горе). Когато в името на обект е споменато повече от едно
+      населено място (напр. обособена позиция за няколко села в една поръчка), обектът се брои само
+      към <strong>първото</strong> споменато населено място — за да съвпада сборът по населени места
+      с общите суми в бюджета, без двойно броене. Обекти без разпознато населено място се броят в
+      <a href="{{ root }}map.html">„Без разпознато населено място"</a> на картата, за да съвпада общия
+      сбор с <a href="{{ root }}budget/index.html">капиталовата програма</a>. Договорите се броят по
+      същия начин върху заглавието на поръчката в ЦАИС ЕОП, но — за разлика от обектите — договор,
+      който назовава няколко населени места (напр. обособени позиции за различни села в една обществена
+      поръчка), се брои с пълната си стойност във всяко от тях; сборът по населени места затова може
+      да надхвърля общата стойност на договорите. Пълният метод е описан в
+      <a href="{{ root }}methodology.html#map">методологията</a>.</p>
+    </div>
+  </section>
+</div>
+{% endblock %}

@@ -1,0 +1,211 @@
+{
+  "deedStatus": 2,
+  "companyName": "Актив-Р",
+  "uic": "102078098",
+  "uicWithCtx": "MTAyMDc4MDk4JtCQ0LrRgtC40LIt0KBNQi4So0qoM6gG6bXbdUduwE-4fwneXCU1XXGQWQPHQA",
+  "legalForm": 10,
+  "sections": [
+    {
+      "subUICType": 1,
+      "nameCode": "CR_GL_GENERAL_STATUS_L",
+      "order": "20001",
+      "subDeeds": [
+        {
+          "subUIC": "0016",
+          "subUICType": 1,
+          "subDeedStatus": 2,
+          "sectionName": "CR_GL_GENERAL_STATUS_L",
+          "subDeedIsClosed": false,
+          "groups": [
+            {
+              "groupID": 415,
+              "nameCode": "CR_GL_MAIN_CIRCUMSTANCES_L",
+              "order": "20001",
+              "fields": [
+                {
+                  "nameCode": "CR_F_1_L",
+                  "htmlData": "<div class='record-container record-container--preview'><p class='field-text'>102078098<br/>Фирмено дело: 2585/1995 210</p></div>",
+                  "fieldEntryNumber": "20110426093658",
+                  "recordMinActionDate": "2011-04-26T09:36:58",
+                  "fieldEntryDate": "2011-04-26T09:36:58",
+                  "fieldActionDate": "2011-04-26T09:36:58",
+                  "fieldIdent": "00010",
+                  "fieldOperation": 3,
+                  "order": "00010"
+                },
+                {
+                  "nameCode": "CR_F_2_L",
+                  "htmlData": "<div class='record-container record-container--preview'><p class='field-text'>Актив-Р</p></div>",
+                  "fieldEntryNumber": "20110426093658",
+                  "recordMinActionDate": "2011-04-26T09:36:58",
+                  "fieldEntryDate": "2011-04-26T09:36:58",
+                  "fieldActionDate": "2011-04-26T09:36:58",
+                  "fieldIdent": "00020",
+                  "fieldOperation": 3,
+                  "order": "00020"
+                },
+                {
+                  "nameCode": "CR_F_3_L",
+                  "htmlData": "<div class='record-container record-container--preview'><p class='field-text'>Еднолично дружество с ограничена отговорност</p></div>",
+                  "fieldEntryNumber": "20110426093658",
+                  "recordMinActionDate": "2011-04-26T09:36:58",
+                  "fieldEntryDate": "2011-04-26T09:36:58",
+                  "fieldActionDate": "2011-04-26T09:36:58",
+                  "fieldIdent": "00030",
+                  "fieldOperation": 3,
+                  "order": "00030"
+                },
+                {
+                  "nameCode": "CR_F_5_L",
+                  "htmlData": "<div class='record-container record-container--preview'><p class='field-text'>Държава: БЪЛГАРИЯ<br/>Област: Бургас, Община: Бургас<br />Населено място: гр. Бургас, п.к. 8001<br/>бул./ул. Сан Стефано № 105, вх. В, ет. 4, ап. 5 </p></div>",
+                  "fieldEntryNumber": "20110426093658",
+                  "recordMinActionDate": "2011-04-26T09:36:58",
+                  "fieldEntryDate": "2011-04-26T09:36:58",
+                  "fieldActionDate": "2011-04-26T09:36:58",
+                  "fieldIdent": "00050",
+                  "fieldOperation": 3,
+                  "order": "00050"
+                },
+                {
+                  "nameCode": "CR_F_6_L",
+                  "htmlData": "<div class='record-container record-container--preview'><p class='field-text'>Покупка на стоки или други вещи с цел препродажба в първоначален , преработен или обработен вид , производство на стоки с цел продажба , комисионна , спедиционна , складова , лизингова дейност, търговско представителство и посредничество , валутни сделки , превозна хотелиерска , туристическа , рекламна , информационна ,ь програмна , импресарска или предоставяне на други услуги , сделки с интелектуална собственост , производство на на филми , видео и звуко записи , както и други подобни  дейности , издателска или печатарска дейност , покупка строеж или обзавеждане на недвижими имоти с цел продажба</p></div>",
+                  "fieldEntryNumber": "20110426093658",
+                  "recordMinActionDate": "2011-04-26T09:36:58",
+                  "fieldEntryDate": "2011-04-26T09:36:58",
+                  "fieldActionDate": "2011-04-26T09:36:58",
+                  "fieldIdent": "00060",
+                  "fieldOperation": 3,
+                  "order": "00060"
+                },
+                {
+                  "nameCode": "CR_F_7_L",
+                  "htmlData": "<div class='record-container record-container--preview'><p class='field-text'>Румен Стоянов Дивов, Държава: БЪЛГАРИЯ</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>РУМЕН СТОЯНОВ ДИМОВ, Държава: БЪЛГАРИЯ</p></div>",
+                  "fieldEntryNumber": "20180515140725",
+                  "fieldEntryDate": "2018-05-15T14:07:25",
+                  "fieldActionDate": "2018-05-15T14:07:25",
+                  "fieldIdent": "00070",
+                  "fieldOperation": 3,
+                  "order": "00070"
+                },
+                {
+                  "nameCode": "CR_F_23_L",
+                  "htmlData": "<div class='record-container record-container--preview'><p class='field-text'>РУМЕН СТОЯНОВ ДИМОВ, Държава: БЪЛГАРИЯ</p></div>",
+                  "fieldEntryNumber": "20180515140725",
+                  "recordMinActionDate": "2011-04-26T09:36:58",
+                  "fieldEntryDate": "2018-05-15T14:07:25",
+                  "fieldActionDate": "2018-05-15T14:07:25",
+                  "fieldIdent": "00230",
+                  "fieldOperation": 3,
+                  "order": "00230"
+                }
+              ]
+            },
+            {
+              "groupID": 16,
+              "nameCode": "CR_GL_FUND_L",
+              "order": "20002",
+              "fields": [
+                {
+                  "nameCode": "CR_F_31_L",
+                  "htmlData": "<div class='record-container record-container--preview'><p class='field-text'>2556.46 €</p></div>",
+                  "fieldEntryNumber": "20260223013058",
+                  "recordMinActionDate": "2011-04-26T09:36:58",
+                  "fieldEntryDate": "2026-02-23T01:30:58",
+                  "fieldActionDate": "2026-02-23T01:30:58",
+                  "fieldIdent": "00310",
+                  "fieldOperation": 3,
+                  "order": "00310"
+                },
+                {
+                  "nameCode": "CR_F_32_L",
+                  "htmlData": "<div class='record-container record-container--preview'><p class='field-text'>2556.46 €</p></div>",
+                  "fieldEntryNumber": "20260223013058",
+                  "recordMinActionDate": "2011-04-26T09:36:58",
+                  "fieldEntryDate": "2026-02-23T01:30:58",
+                  "fieldActionDate": "2026-02-23T01:30:58",
+                  "fieldIdent": "00320",
+                  "fieldOperation": 3,
+                  "order": "00320"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "subUICType": 13,
+      "nameCode": "CR_GL_ANNOUNCED_ACTS_L",
+      "order": "20001",
+      "subDeeds": [
+        {
+          "subUIC": "0016",
+          "subUICType": 13,
+          "subDeedStatus": 0,
+          "sectionName": "CR_GL_ANNOUNCED_ACTS_L",
+          "subDeedIsClosed": false,
+          "groups": [
+            {
+              "groupID": 42,
+              "nameCode": "CR_GL_ANNOUNCED_ACTS_L",
+              "order": "20001",
+              "fields": [
+                {
+                  "nameCode": "CR_F_1001_L",
+                  "htmlData": "<div class='record-container record-container--preview'><p class='field-text'>Годишен финансов отчет<br/>Година: 2010г.<br /><a href='DocumentAccess/MTAyMDc4MDk4JmUmNjQyODUyMDdjOTU0NDA1Y2E2OTQyNjVmODRmZDgxNTkiSQOcYQ6NovrmGl7rEwGRSYCgkqURCFmg69G7qsfCyA' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Годишен финансов отчет</a><br/>Дата на обявяване: 02.12.2011 г. 15:38:40</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Годишен финансов отчет<br/>Година: 2011г.<br /><a href='DocumentAccess/MTAyMDc4MDk4JmUmMDRmM2NhNDEzZGJhNDk1ZThmNzk2ZjczNjkzM2I0OTnwv-Fh6qhTF1qJDWpkkr9G-dv3ZDZ-cwAZ1NCuaqqkHw' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Годишен финансов отчет</a><br/>Дата на обявяване: 07.01.2013 г. 18:46:39</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Годишен финансов отчет<br/>Година: 2012г.<br /><a href='DocumentAccess/MTAyMDc4MDk4JmUmMWNmMmM4YzhlZDQ4NDk5ODg0ODJjY2ZmNjIzMzM0NWEQ1ufE4doUJjenYfLqUPF2A1g2zR_w2StM6xRaTXg-xw' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Годишен финансов отчет</a><br/>Дата на обявяване: 06.02.2014 г. 15:53:07</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Годишен финансов отчет<br/>Година: 2013г.<br /><a href='DocumentAccess/MTAyMDc4MDk4JmUmNzFiZTVjOWRlMDZiNDJiODgyMjQyYWM1Mzg5Y2ZjYjaeG1O0cr76w3TRJzYycFS6k2MtDcwQcXo5pggrhQN1og' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Годишен финансов отчет</a><br/>Дата на обявяване: 12.01.2015 г. 20:05:42</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Годишен финансов отчет<br/>Година: 2014г.<br /><a href='DocumentAccess/MTAyMDc4MDk4JmUmY2UyNDNjMGYwY2RjNDRiZWE5ZjNhM2E0YWFmYjM0MzMQnPrnXAi4udxYAoOjOVdqteXh7zDC_NrH9xIPiC_Knw' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Годишен финансов отчет</a><br/>Дата на обявяване: 29.10.2016 г. 13:47:16</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Годишен финансов отчет<br/>Година: 2015г.<br /><a href='DocumentAccess/MTAyMDc4MDk4JmUmZGNmMTI5N2E4OTFlNDhjNzk1N2VlZjM3ZjUxY2Q3NjGH3y0ydahMf-PPAjX6n-fKIm056Qr8N8Kx1kWl3yFTDw' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Годишен финансов отчет</a><br/>Дата на обявяване: 15.05.2018 г. 13:46:46</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Годишен финансов отчет<br/>Година: 2016г.<br /><a href='DocumentAccess/MTAyMDc4MDk4JmUmMTI0ODFiMDJlY2Y0NDgzM2EyMjI4NGEwMmIwMWIxY2SO5-YpWrhRhwsV5uqV5S2OBuoSA141x22CbI4yr4ITbg' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Годишен финансов отчет</a><br/>Дата на обявяване: 15.05.2018 г. 13:50:32</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Годишен финансов отчет<br/>Година: 2018г.<br /><a href='DocumentAccess/MTAyMDc4MDk4JmUmNGVkZWY0YzQ3ZjQyNDRlYjgxYjE1ZGY3NmE0MGVkZWOQMR1wmkkiZVsQBPZHBPCvBchy-ZrFnGT463Dn5gOA9w' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Годишен финансов отчет</a><br/>Дата на обявяване: 18.05.2022 г. 15:51:25</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Годишен финансов отчет<br/>Година: 2019г.<br /><a href='DocumentAccess/MTAyMDc4MDk4JmUmZjU5NDQ1ODUyNTlhNDRhMzgzMjE3NjNhNjBiZjQ3NjT8zW-e5gATw3b5EjkDjvmBGvaq4HX7jhGid33qKPHhXA' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Годишен финансов отчет</a><br/>Дата на обявяване: 18.11.2023 г. 11:09:39</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Годишен финансов отчет<br/>Година: 2020г.<br /><a href='DocumentAccess/MTAyMDc4MDk4JmUmYmI4MGY2ZDZkZTAzNDQ4ZThiMWI4OTM2NmI1NzBiNWX2O8o9FV3a9s8mP3pXg7vX-2yni3FllQDMOTor9U0Vzw' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Годишен финансов отчет</a><br/>Дата на обявяване: 09.04.2024 г. 08:26:41</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Годишен финансов отчет<br/>Година: 2021г.<br /><a href='DocumentAccess/MTAyMDc4MDk4JmUmYmEyYTgwYjdjZjI2NDk5MzgwMTJkNjA3MmY5NmY1ODDNHjMtIUjDyP1_tdzEtgZYo2l7oBelW1tDYHMl2Y-RvA' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Годишен финансов отчет</a><br/>Дата на обявяване: 17.10.2024 г. 11:58:40</p></div><hr class='hr--report' /><div class='record-container record-container--preview'><p class='field-text'>Годишен финансов отчет<br/>Година: 2022г.<br /><a href='DocumentAccess/MTAyMDc4MDk4JmUmYTQ4MzgxOGFhMjI1NDQ5OGI0NTE3YjM4YTZhZWVhZGOP-imxgVzXmVozTsl2yI_13Q7exDCpFg_h8EiHksXXMQ' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Годишен финансов отчет</a><br/>Дата на обявяване: 07.06.2025 г. 12:18:08</p></div>",
+                  "fieldEntryNumber": "20250607121808",
+                  "fieldEntryDate": "2025-06-07T12:18:08",
+                  "fieldActionDate": "2025-06-07T12:18:08",
+                  "fieldIdent": "10019B",
+                  "fieldOperation": 3,
+                  "order": "10010001"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "subUICType": 13,
+      "nameCode": "CR_GL_CURRENT_CONSTUTIVE_ACT_L",
+      "order": "20001",
+      "subDeeds": [
+        {
+          "subUIC": "0016",
+          "subUICType": 13,
+          "subDeedStatus": 0,
+          "sectionName": "CR_GL_ANNOUNCED_ACTS_L",
+          "subDeedIsClosed": false,
+          "groups": [
+            {
+              "groupID": 451,
+              "nameCode": "CR_GL_CURRENT_CONSTUTIVE_ACT_L",
+              "order": "20001",
+              "fields": [
+                {
+                  "nameCode": "CR_F_1001_L",
+                  "htmlData": "<div class='record-container record-container--preview'><p class='field-text'>Актуален дружествен договор/учредителен акт/устав<br /><a href='DocumentAccess/MTAyMDc4MDk4JmUmOWVhNTVlYjE3OWQwNGQ2YWI2MWE4NzM4ZDVjYzcwYmWwA7m_ZlhDcxgHhOAD6H5w8CKrmn3DDdzUfrvKMcwDDQ' target='_blank'><i class='ui-icon ui-icon-download-color mr-1'></i>Актуален дружествен договор/учредителен акт/устав</a><br/>Дата на обявяване: 26.04.2011 г. 09:36:58</p></div>",
+                  "fieldEntryNumber": "20110426093658",
+                  "fieldEntryDate": "2011-04-26T09:36:58",
+                  "fieldActionDate": "2011-04-26T09:36:58",
+                  "fieldIdent": "1001AJ",
+                  "fieldOperation": 3,
+                  "order": "10010029"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "fullName": "\"Актив-Р\" ЕООД",
+  "hasInstructions": true,
+  "hasAssignments": false,
+  "hasCompanyCasees": true,
+  "hasLegalFormChange": false,
+  "hasNotifications": false,
+  "hasForeignParentCompany": false,
+  "hasForeignBranches": false
+}
